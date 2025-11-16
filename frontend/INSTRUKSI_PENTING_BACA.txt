@@ -1,0 +1,54 @@
+========================================
+  INSTRUKSI PENTING - BACA INI DULU!
+========================================
+
+MASALAH ANDA:
+Login di hosting TIDAK BERFUNGSI karena demo mode MATI.
+
+PENYEBAB:
+File .env memiliki VITE_DEMO_AUTH=false
+
+SOLUSI TERCEPAT (3 LANGKAH):
+
+1. EDIT FILE .env
+   Buka file .env (di root project)
+   Ubah isinya menjadi:
+   
+   VITE_DEMO_AUTH=true
+   
+   (hapus atau comment baris VITE_API_BASE_URL)
+
+2. BUILD ULANG
+   Jalankan di terminal:
+   npm run build
+
+3. UPLOAD
+   Upload folder 'dist' ke hosting
+
+ATAU PAKAI SCRIPT OTOMATIS:
+- Double-click file: build-demo.bat
+- Upload folder dist yang dibuat
+
+========================================
+DEMO ACCOUNTS:
+========================================
+Operator: 08123456789 / operator123
+Kepala Dusun: 081234560000 / dusun123
+Citizen: 081234560011 / pengguna123
+
+========================================
+VERIFIKASI:
+========================================
+Setelah upload, buka halaman login.
+HARUS MUNCUL:
+- Banner "Mode Demo Aktif" (biru-hijau)
+- List demo accounts di bawah form
+
+Jika TIDAK muncul = ulangi langkah 1-3
+
+========================================
+DOKUMENTASI LENGKAP:
+========================================
+Baca file: CARA_FIX_LOGIN_PRODUCTION.md
+
+========================================

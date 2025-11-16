@@ -1,0 +1,27 @@
+{
+  "name": "Desa Fajar Baru - Smart Village",
+  "short_name": "Desa Fajar Baru",
+  "description": "Website resmi Desa Fajar Baru Lampung Selatan - Smart Village dengan layanan administrasi digital",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo/Logo Kabupaten Lampung Selatan.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo/Logo Kabupaten Lampung Selatan.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["government", "public-service"],
+  "lang": "id-ID",
+  "dir": "ltr"
+}
