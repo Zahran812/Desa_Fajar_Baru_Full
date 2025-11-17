@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
 
 interface User {
   id: number;
@@ -7,17 +13,14 @@ interface User {
   full_name: string;
   role: string;
   rt_number?: string;
-  phone?: string;
-  address?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  isDemoMode: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
-  register: (userData: RegisterData) => Promise<{ success: boolean; message?: string }>;
+  login: (phone: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  register: (userData: RegisterData) => Promise<{ success: boolean; message?: string }>;
   checkAuth: () => Promise<void>;
 }
 
@@ -48,7 +51,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
@@ -56,52 +59,28 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const API = import.meta.env.VITE_API_BASE_URL as string;
-  const DEMO_USERS: Record<string, { password: string; user: User }> = {
-    '08123456789': { password: 'operator123', user: { id: 1, username: 'operator', email: 'operator@example.com', full_name: 'Operator Desa', role: 'operator', rt_number: '01' } },
-    '081234560000': { password: 'dusun123', user: { id: 2, username: 'dusun_head', email: 'dusun@example.com', full_name: 'Kepala Dusun', role: 'dusun_head', rt_number: '01' } },
-    '081234560011': { password: 'pengguna123', user: { id: 3, username: 'citizen', email: 'user@example.com', full_name: 'Pengguna Masyarakat', role: 'citizen', rt_number: '01' } },
-  };
-  // Demo mode aktif jika: explicit true, dev mode, atau tidak ada API URL
-  // FORCE DEMO MODE untuk production build - selalu aktif
-  const DEMO_ENABLED = true;
+  const API_BASE = import.meta.env.VITE_API_BASE_URL as string;
 
-  // Log demo mode status
-  useEffect(() => {
-    if (DEMO_ENABLED) {
-      console.log('%c🎭 DEMO MODE AKTIF', 'background: #10b981; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;');
-      console.log('✅ Login tersedia tanpa backend');
-      console.log('📱 Gunakan akun demo yang tersedia di halaman login');
-      if (!API) {
-        console.log('ℹ️ Backend URL tidak dikonfigurasi - menggunakan demo mode');
-      }
-    } else {
-      console.log('🔗 Backend mode aktif:', API);
-      console.log('💡 Demo users juga tersedia sebagai fallback');
-    }
-  }, [DEMO_ENABLED, API]);
-
+  // -------------------------------
+  // CHECK AUTH WITH TOKEN ( /api/me )
+  // -------------------------------
   const checkAuth = async () => {
-    console.log('🔍 checkAuth called - DEMO_ENABLED:', DEMO_ENABLED);
     try {
-      if (DEMO_ENABLED) {
-        const stored = localStorage.getItem('demo_user');
-        console.log('📦 localStorage demo_user:', stored ? 'Found' : 'Not found');
-        if (stored) {
-          const userData = JSON.parse(stored);
-          console.log('✅ Setting user from localStorage:', userData.role);
-          setUser(userData);
-        } else {
-          console.log('❌ No stored user - setting null');
-          setUser(null);
-        }
-        setLoading(false); // FIX: Set loading false sebelum return
-        console.log('⏳ Loading set to FALSE (demo mode)');
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        setUser(null);
+        setLoading(false);
         return;
       }
-      const response = await fetch(`${API}/api/auth/me.php`, {
-        credentials: 'include',
+
+      const response = await fetch(`${API_BASE}/me`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Accept": "application/json",
+        },
       });
+
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
@@ -109,112 +88,110 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(null);
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error("Auth check failed:", error);
       setUser(null);
     } finally {
       setLoading(false);
     }
   };
 
+  // -------------------------------
+  // LOGIN → SIMPAN TOKEN SANCTUM
+  // -------------------------------
   const login = async (phone: string, password: string): Promise<boolean> => {
-    console.log('🔐 Login attempt - phone:', phone);
     try {
-      // Cek demo users terlebih dahulu (selalu tersedia sebagai fallback)
-      const demo = DEMO_USERS[phone];
-      console.log('🎭 Demo user check:', demo ? 'Found' : 'Not found');
-      if (demo && demo.password === password) {
-        console.log('✅ Demo credentials valid - role:', demo.user.role);
-        setUser(demo.user);
-        localStorage.setItem('demo_user', JSON.stringify(demo.user));
-        console.log('💾 User saved to localStorage');
-        console.log('👤 User state updated:', demo.user);
+      const response = await fetch(`${API_BASE}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ phone, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.token) {
+        localStorage.setItem("auth_token", data.token);
+
+        setUser(data.user);
         return true;
       }
-      
-      // Jika bukan demo user dan backend tersedia, coba login ke backend
-      if (!DEMO_ENABLED && API) {
-        const response = await fetch(`${API}/api/auth/login.php`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({ phone, password }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setUser(data.user);
-          return true;
-        } else {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Login failed');
-        }
-      }
-      
-      // Jika sampai sini, login gagal
+
+      console.error("Login failed:", data);
       return false;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error("Login error:", error);
       return false;
     }
   };
 
-  const register = async (userData: RegisterData): Promise<{ success: boolean; message?: string }> => {
+  // -------------------------------
+  // REGISTER (opsional)
+  // -------------------------------
+  const register = async (userData: RegisterData) => {
     try {
-      if (DEMO_ENABLED) {
-        return { success: false, message: 'Demo mode: pendaftaran dinonaktifkan. Gunakan akun demo yang tersedia.' };
-      }
-      const response = await fetch(`${API}/api/auth/register.php`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+      const res = await fetch(`${API_BASE}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify(userData),
       });
-      const data = await response.json();
-      if (response.ok) {
+
+      const data = await res.json();
+
+      if (res.ok) {
         return { success: true, message: data.message };
-      } else {
-        return { success: false, message: data.error || 'Registration failed' };
       }
-    } catch (error) {
-      console.error('Registration error:', error);
-      return { success: false, message: 'Network error occurred' };
+
+      return { success: false, message: data.message || "Registration failed" };
+    } catch (err) {
+      console.error("Registration error:", err);
+      return { success: false, message: "Network error" };
     }
   };
-
+  // -------------------------------
+  // LOGOUT
+  // -------------------------------
   const logout = async () => {
     try {
-      if (DEMO_ENABLED) {
-        localStorage.removeItem('demo_user');
-      } else {
-        await fetch(`${API}/api/auth/logout.php`, {
-          method: 'POST',
-          credentials: 'include',
+      const token = localStorage.getItem("auth_token");
+      if (token) {
+        await fetch(`${API_BASE}/logout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
         });
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
     } finally {
+      localStorage.removeItem("auth_token");
       setUser(null);
-      window.location.href = '/';
+      window.location.href = "/";
     }
   };
 
+  // -------------------------------
+  // RUN CHECK AUTH AT FIRST LOAD
+  // -------------------------------
   useEffect(() => {
     checkAuth();
   }, []);
 
-  const value = {
-    user,
-    loading,
-    isDemoMode: DEMO_ENABLED,
-    login,
-    register,
-    logout,
-    checkAuth,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        checkAuth,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };
