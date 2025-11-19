@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('full_name');
             $table->string('birth_place')->nullable();
             $table->date('birth_date')->nullable();
-            $table->enum('gender', ['male', 'female'])->nullable();
+            $table->string('gender')->nullable();
             $table->string('blood_type')->nullable();
 
             // Alamat detail

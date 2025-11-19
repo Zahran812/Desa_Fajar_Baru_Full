@@ -2,7 +2,9 @@ import { useState, useEffect, memo, useRef } from 'react';
 import Tesseract from 'tesseract.js';
 import { useAuth } from '@/react-app/contexts/AuthContext';
 import PageLayout from '@/react-app/components/PageLayout';
-import { Eye, EyeOff, Phone, Lock, User, CreditCard, MapPin, Home, UserCog, Users as UsersIcon, UserCheck } from 'lucide-react';
+import { Eye, EyeOff, Phone, Lock, User, CreditCard, MapPin, Home, UserCog, Users as UsersIcon, UserCheck, Calendar } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 // Memoized heavy illustration to avoid re-rendering on every keystroke
 const IllustrationSection = memo(({ side, isLogin }: { side: 'left' | 'right'; isLogin: boolean }) => (
@@ -709,7 +711,32 @@ const Login = () => {
             </div>
             <div>
               <label className="block text-xs lg:text-sm font-semibold text-gray-700 mb-2">Tanggal Lahir</label>
-              <input type="text" name="birth_date" value={formData.birth_date} onChange={handleInputChange} placeholder="dd-mm-yyyy" className="w-full pr-4 py-3 lg:py-3.5 text-sm lg:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-gray-900 placeholder-gray-500 px-4" />
+              <div className="relative">
+                <DatePicker
+                  selected={formData.birth_date ? new Date(formData.birth_date.split('-').reverse().join('-')) : null}
+                  onChange={(date) => {
+                    if (date) {
+                      const day = String(date.getDate()).padStart(2, '0');
+                      const month = String(date.getMonth() + 1).padStart(2, '0');
+                      const year = date.getFullYear();
+                      const formattedDate = `${day}-${month}-${year}`;
+                      setFormData(prev => ({
+                        ...prev,
+                        birth_date: formattedDate
+                      }));
+                    }
+                  }}
+                  dateFormat="dd-MM-yyyy"
+                  placeholderText="dd-mm-yyyy"
+                  className="w-full pl-10 pr-4 py-3 lg:py-3.5 text-sm lg:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-gray-900 placeholder-gray-500"
+                  showYearDropdown
+                  dropdownMode="select"
+                  yearDropdownItemNumber={100}
+                  scrollableYearDropdown
+                  maxDate={new Date()}
+                />
+                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 lg:w-5 lg:h-5" />
+              </div>
             </div>
           </div>
         )}

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Citizen;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -23,7 +24,7 @@ class RegisterController extends Controller
             'full_name'      => 'required|string',
 
             'birth_place'    => 'nullable|string',
-            'birth_date'     => 'nullable|date',
+            'birth_date'     => 'nullable|string',
             'gender'         => 'nullable|string',
             'blood_type'     => 'nullable|string',
 
@@ -40,6 +41,11 @@ class RegisterController extends Controller
             'marital_status' => 'nullable|string',
             'occupation'     => 'nullable|string',
         ]);
+
+        $validated['birth_date'] = isset($validated['birth_date'])
+            ? date('Y-m-d', strtotime(str_replace('-', '/', $validated['birth_date'])))
+            : null;
+
 
         // 1️⃣ Create user
         $user = User::create([
