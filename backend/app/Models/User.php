@@ -30,4 +30,9 @@ class User extends Authenticatable
     {
         return $this->password_hash;
     }
+    public function citizen()
+    {
+        return $this->hasOne(Citizen::class);
+    }
+
 }

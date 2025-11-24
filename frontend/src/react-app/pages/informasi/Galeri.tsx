@@ -1,32 +1,116 @@
-import PageLayout from '@/react-app/components/PageLayout';
-import { useMemo, useState } from 'react';
-import { Image as ImageIcon, Filter, Search, X } from 'lucide-react';
-import { galleryItems } from '@/data/gallery';
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+// Pastikan PageLayout yang diimpor dari path yang benar (asumsi path dipertahankan)
+import PageLayout from '@/react-app/components/PageLayout'; 
+import { Image as ImageIcon, Filter, Search, X } from "lucide-react";
+import { apiFetch } from "@/react-app/lib/api"; // pakai apiFetch dari @/lib/api
+
+// fallback lokal (file yang kamu upload) — gunakan path ini jika ingin men-debug gambar lokal
+const FALLBACK_IMAGE = "/mnt/data/1113d6c0-04f0-4861-aa88-ee6a77fd9f07.png";
 
 const GaleriPage = () => {
-  const [query, setQuery] = useState('');
-  const [kategori, setKategori] = useState<string>('semua');
+  const [galleryItems, setGalleryItems] = useState<any[]>([]);
+  const [query, setQuery] = useState("");
+  const [kategori, setKategori] = useState<string>("semua");
   const [preview, setPreview] = useState<{ src: string; caption: string; title?: string; category?: string } | null>(null);
+  // Pindahkan state loading, tapi pertahankan inisialisasi true
+  const [loading, setLoading] = useState(true); 
+
+  // fetch dari backend
+  useEffect(() => {
+    const fetchGalleryItems = async () => {
+      // Tidak perlu setLoading(true) di sini karena sudah true saat inisialisasi
+      try {
+        const galleryResponse = await apiFetch("/gallery", { credentials: "include" });
+
+        if (!galleryResponse.ok) {
+          console.error("Failed to fetch gallery items");
+          setGalleryItems([]);
+          return; // Jangan set loading false di sini, akan dilakukan di 'finally'
+        }
+
+        const data = await galleryResponse.json();
+        const items = Array.isArray(data.galleries) ? data.galleries : [];
+
+        // normalisasi ke field yang digunakan UI: src, caption, title, category
+        const normalized = items
+          .filter(
+            (item: any) =>
+              item &&
+              typeof item === "object" &&
+              "id" in item &&
+              "title" in item &&
+              "image_url" in item &&
+              "category" in item &&
+              "status" in item
+          )
+          .map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            caption: item.description ?? "",
+            category: item.category,
+            // backend bisa mengembalikan path relatif atau URL penuh — gunakan apa adanya,
+            // dan fallback ke local file bila kosong
+            src: item.image_url ? item.image_url : FALLBACK_IMAGE,
+            status: item.status,
+            created_at: item.created_at,
+          }));
+
+        setGalleryItems(normalized);
+      } catch (err) {
+        console.error("Error fetching galleries:", err);
+        setGalleryItems([]);
+      } finally {
+        // PENTING: set loading false setelah fetch (baik sukses/gagal)
+        setLoading(false); 
+      }
+    };
+
+    fetchGalleryItems();
+  }, []);
 
   // Build categories from data (plus 'semua')
   const categories = useMemo(() => {
     const set = new Set<string>();
     galleryItems.forEach(i => { if (i.category) set.add(i.category); });
-    return ['semua', ...Array.from(set)];
-  }, []);
+    return ["semua", ...Array.from(set)];
+  }, [galleryItems]);
 
   const filtered = useMemo(() => {
     return galleryItems.filter(p =>
-      (kategori === 'semua' || (p.category || '').toLowerCase() === kategori.toLowerCase()) &&
-      ((p.caption || p.title || '').toLowerCase().includes(query.toLowerCase()))
+      (kategori === "semua" || (p.category || "").toLowerCase() === kategori.toLowerCase()) &&
+      ((p.caption || p.title || "").toLowerCase().includes(query.toLowerCase()))
     );
-  }, [kategori, query]);
+  }, [kategori, query, galleryItems]);
 
+  // Hapus blok kondisional loading di sini
+  // if (loading) {
+  //   return (
+  //     <div className="py-16">
+  //       <div className="container mx-auto px-4">
+  //         <div className="text-center py-12">Loading galeri...</div>
+  //       </div>
+  //     </div>
+  //   );
+  // }
+
+  // Pindahkan logic loading ke prop `loading` di `PageLayout`
   return (
-    <PageLayout
-      title="Galeri Desa"
-      subtitle="Dokumentasi foto kegiatan dan potensi Desa Fajar Baru"
-      breadcrumb={[{ name: 'Beranda', href: '/' }, { name: 'Informasi' }, { name: 'Galeri Desa' }]}
+    <PageLayout 
+      title="Galeri Desa" 
+      subtitle="Dokumentasi foto kegiatan dan potensi Desa Fajar Baru" 
+      breadcrumb={[{ name: 'Beranda', href: '/' }, { name: 'Informasi' }, { name: 'Galeri Desa' }]} 
+      // TAMBAHKAN PROPS LOADING DI SINI
+      loading={loading}
+      // Tambahkan children saat loading (opsional, tergantung implementasi PageLayout)
+      loadingContent={
+        <div className="py-16">
+          <div className="container mx-auto px-4">
+            <div className="text-center py-12">Loading galeri...</div>
+          </div>
+        </div>
+      }
     >
       <div className="py-16">
         <div className="container mx-auto px-4">
@@ -95,6 +179,7 @@ const GaleriPage = () => {
                       src={p.src} 
                       alt={p.caption || p.title || 'Foto galeri'} 
                       loading="lazy" 
+                      onError={(e: any) => { e.currentTarget.src = FALLBACK_IMAGE; }}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -143,6 +228,7 @@ const GaleriPage = () => {
                     src={preview.src} 
                     alt={preview.caption} 
                     loading="lazy" 
+                    onError={(e: any) => { e.currentTarget.src = FALLBACK_IMAGE; }}
                     className="w-full max-h-[70vh] object-contain bg-gray-100" 
                   />
                   

@@ -8,7 +8,7 @@ import GalleryEditor from '@/react-app/components/dashboard/GalleryEditor';
 import ServiceEditor from '@/react-app/components/dashboard/ServiceEditor';
 import PPIDEditor from '@/react-app/components/dashboard/PPIDEditor';
 import TransparencyEditor from '@/react-app/components/dashboard/TransparencyEditor';
-import { mockArticles, mockAgendaItems, mockGalleryItems, mockTransparencyData, mockVillagePrograms } from '@/react-app/data/mockInformationData';
+import { mockArticles, mockTransparencyData, mockVillagePrograms } from '@/react-app/data/mockInformationData';
 import { 
   Users, UserPlus, Settings, Home, Shield, 
   Clock, CheckCircle, XCircle, Plus, Edit3, Trash2,
@@ -253,8 +253,8 @@ const OperatorDashboard = () => {
   const [messages, setMessages] = useState<AppMessage[]>([]);
   const [populationData, setPopulationData] = useState<PopulationData[]>([]);
   const [articles, setArticles] = useState<Article[]>(mockArticles);
-  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(mockAgendaItems);
-  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>(mockGalleryItems);
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [transparencyData, setTransparencyData] = useState<TransparencyData[]>(mockTransparencyData);
   const [villagePrograms, setVillagePrograms] = useState<VillageProgram[]>(mockVillagePrograms);
   const [services, setServices] = useState<Service[]>([]);
@@ -379,6 +379,37 @@ const OperatorDashboard = () => {
     dusun: ''
   });
 
+  const fetchGalleryItems = async () => {
+    const galleryResponse = await apiFetch('/gallery', {
+      credentials: 'include'
+    });
+
+    if (!galleryResponse.ok) {
+      console.error('Failed to fetch gallery items');
+      setGalleryItems([]);
+      return;
+    }
+
+    const data = await galleryResponse.json();
+
+    // Pastikan ambil array dari field `galleries`
+    const items = Array.isArray(data.galleries) ? data.galleries : [];
+
+    // Validasi item seperti sebelumnya
+    const validItems = items.filter(item =>
+      item &&
+      typeof item === 'object' &&
+      'id' in item &&
+      'title' in item &&
+      'image_url' in item &&
+      'category' in item &&
+      'status' in item
+    );
+
+    setGalleryItems(validItems);
+  };
+
+
   // Redirect if not authorized
   useEffect(() => {
     if (user && user.role !== 'operator') {
@@ -401,307 +432,32 @@ const OperatorDashboard = () => {
       try {
         // Load demo data for simulation
         // In production, you would fetch from API only
-        
+        const token = localStorage.getItem("auth_token");
         // Demo data for pending users (always loaded for demo)
-        setPendingUsers([
-              {
-                id: 101,
-                username: 'ahmad.fauzi',
-                email: 'ahmad.fauzi@email.com',
-                full_name: 'Ahmad Fauzi',
-                role: 'citizen',
-                status: 'pending',
-                rt_number: 'RT 01',
-                rw_number: 'RW 02',
-                phone: '081234567890',
-                address: 'Jl. Merpati No. 12, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-                ktp_image_url: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=800&h=500&fit=crop',
-                nik: '1871012345670001',
-                birth_place: 'Lampung Selatan',
-                birth_date: '1990-05-15',
-                gender: 'Laki-laki',
-                blood_type: 'A',
-                dusun: 'Dusun Mawar',
-                village: 'Fajar Baru',
-                district: 'Jati Agung',
-                province: 'Lampung',
-                regency: 'Lampung Selatan',
-                religion: 'Islam',
-                marital_status: 'Kawin',
-                occupation: 'Wiraswasta'
-              },
-              {
-                id: 102,
-                username: 'siti.nurhaliza',
-                email: 'siti.nur@email.com',
-                full_name: 'Siti Nurhaliza',
-                role: 'citizen',
-                status: 'pending',
-                rt_number: 'RT 03',
-                rw_number: 'RW 01',
-                phone: '082345678901',
-                address: 'Jl. Kenari No. 45, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-                ktp_image_url: 'https://images.unsplash.com/photo-1633409361618-c73427e4e206?w=800&h=500&fit=crop',
-                nik: '1871022345670002',
-                birth_place: 'Bandar Lampung',
-                birth_date: '1992-08-20',
-                gender: 'Perempuan',
-                blood_type: 'B',
-                dusun: 'Dusun Melati',
-                village: 'Fajar Baru',
-                district: 'Jati Agung',
-                province: 'Lampung',
-                regency: 'Lampung Selatan',
-                religion: 'Islam',
-                marital_status: 'Belum Kawin',
-                occupation: 'Karyawan Swasta'
-              },
-              {
-                id: 103,
-                username: 'budi.santoso',
-                email: 'budi.santoso@email.com',
-                full_name: 'Budi Santoso',
-                role: 'citizen',
-                status: 'pending',
-                rt_number: 'RT 02',
-                rw_number: 'RW 03',
-                phone: '083456789012',
-                address: 'Jl. Cendrawasih No. 78, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-                ktp_image_url: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&h=500&fit=crop',
-                nik: '1871031234560003',
-                birth_place: 'Metro',
-                birth_date: '1988-03-10',
-                gender: 'Laki-laki',
-                blood_type: 'O',
-                dusun: 'Dusun Kenanga',
-                village: 'Fajar Baru',
-                district: 'Jati Agung',
-                province: 'Lampung',
-                regency: 'Lampung Selatan',
-                religion: 'Islam',
-                marital_status: 'Kawin',
-                occupation: 'Petani'
-              },
-              {
-                id: 104,
-                username: 'dewi.lestari',
-                email: 'dewi.lestari@email.com',
-                full_name: 'Dewi Lestari',
-                role: 'citizen',
-                status: 'pending',
-                rt_number: 'RT 04',
-                rw_number: 'RW 02',
-                phone: '084567890123',
-                address: 'Jl. Flamboyan No. 23, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-                ktp_image_url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&h=500&fit=crop',
-                nik: '1871042345670004',
-                birth_place: 'Pringsewu',
-                birth_date: '1995-12-25',
-                gender: 'Perempuan',
-                blood_type: 'AB',
-                dusun: 'Dusun Anggrek',
-                village: 'Fajar Baru',
-                district: 'Jati Agung',
-                province: 'Lampung',
-                regency: 'Lampung Selatan',
-                religion: 'Islam',
-                marital_status: 'Belum Kawin',
-                occupation: 'Guru'
-              }
-            ]);
+        const usersResponse = await apiFetch("/users/list", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
 
-        // Demo data for dusun heads (always loaded for demo)
-        setDusunHeads([
-              {
-                id: 201,
-                username: 'kepala.rt01',
-                email: 'rt01@desafajarbaru.id',
-                full_name: 'H. Sutrisno, S.Pd',
-                role: 'dusun_head',
-                status: 'active',
-                rt_number: 'RT 01/RW 01',
-                phone: '081234111111',
-                address: 'Jl. Mawar No. 1, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 202,
-                username: 'kepala.rt02',
-                email: 'rt02@desafajarbaru.id',
-                full_name: 'Drs. Bambang Priyanto',
-                role: 'dusun_head',
-                status: 'active',
-                rt_number: 'RT 02/RW 01',
-                phone: '081234222222',
-                address: 'Jl. Melati No. 15, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 85 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 203,
-                username: 'kepala.rt03',
-                email: 'rt03@desafajarbaru.id',
-                full_name: 'Hj. Sri Wahyuni, S.E',
-                role: 'dusun_head',
-                status: 'active',
-                rt_number: 'RT 03/RW 02',
-                phone: '081234333333',
-                address: 'Jl. Anggrek No. 7, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 80 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 204,
-                username: 'kepala.rt04',
-                email: 'rt04@desafajarbaru.id',
-                full_name: 'Ahmad Hidayat, S.H',
-                role: 'dusun_head',
-                status: 'active',
-                rt_number: 'RT 04/RW 02',
-                phone: '081234444444',
-                address: 'Jl. Dahlia No. 22, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 75 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 205,
-                username: 'kepala.rt05',
-                email: 'rt05@desafajarbaru.id',
-                full_name: 'Supriyadi, S.Kom',
-                role: 'dusun_head',
-                status: 'active',
-                rt_number: 'RT 05/RW 03',
-                phone: '081234555555',
-                address: 'Jl. Tulip No. 33, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 70 * 24 * 60 * 60 * 1000).toISOString()
-              }
-            ]);
+        if (usersResponse.ok) {
+          const data = await usersResponse.json();
 
-        // Demo data for citizens (always loaded for demo)
-        setCitizens([
-              {
-                id: 301,
-                username: 'andi.wijaya',
-                email: 'andi.wijaya@email.com',
-                full_name: 'Andi Wijaya',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 01/RW 01',
-                phone: '085111222333',
-                address: 'Jl. Cempaka No. 5, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 302,
-                username: 'ratna.sari',
-                email: 'ratna.sari@email.com',
-                full_name: 'Ratna Sari Dewi',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 01/RW 01',
-                phone: '085222333444',
-                address: 'Jl. Cempaka No. 12, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 303,
-                username: 'yanto.kurniawan',
-                email: 'yanto.k@email.com',
-                full_name: 'Yanto Kurniawan',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 02/RW 01',
-                phone: '085333444555',
-                address: 'Jl. Seroja No. 8, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 50 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 304,
-                username: 'maya.kusuma',
-                email: 'maya.kusuma@email.com',
-                full_name: 'Maya Kusuma Wardhani',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 02/RW 01',
-                phone: '085444555666',
-                address: 'Jl. Seroja No. 20, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 305,
-                username: 'hendra.gunawan',
-                email: 'hendra.g@email.com',
-                full_name: 'Hendra Gunawan',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 03/RW 02',
-                phone: '085555666777',
-                address: 'Jl. Sakura No. 15, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 306,
-                username: 'linda.permata',
-                email: 'linda.permata@email.com',
-                full_name: 'Linda Permata Sari',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 03/RW 02',
-                phone: '085666777888',
-                address: 'Jl. Sakura No. 27, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 307,
-                username: 'rudi.hartono',
-                email: 'rudi.hartono@email.com',
-                full_name: 'Rudi Hartono',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 04/RW 02',
-                phone: '085777888999',
-                address: 'Jl. Teratai No. 9, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 308,
-                username: 'fitri.handayani',
-                email: 'fitri.h@email.com',
-                full_name: 'Fitri Handayani',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 04/RW 02',
-                phone: '085888999000',
-                address: 'Jl. Teratai No. 34, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 309,
-                username: 'agus.setiawan',
-                email: 'agus.setiawan@email.com',
-                full_name: 'Agus Setiawan',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 05/RW 03',
-                phone: '085999000111',
-                address: 'Jl. Kamboja No. 11, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 310,
-                username: 'rina.marlina',
-                email: 'rina.marlina@email.com',
-                full_name: 'Rina Marlina',
-                role: 'citizen',
-                status: 'active',
-                rt_number: 'RT 05/RW 03',
-                phone: '085000111222',
-                address: 'Jl. Kamboja No. 28, Desa Fajar Baru',
-                created_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString()
-              }
-            ]);
+          // Jika backend sudah memisahkan
+          if (data.pending_users) setPendingUsers(data.pending_users);
+          if (data.dusun_heads) setDusunHeads(data.dusun_heads);
+          if (data.citizens) setCitizens(data.citizens);
 
+          // Jika backend hanya return satu array user ⇒ kita pisahkan manual
+          if (Array.isArray(data.users)) {
+            setPendingUsers(data.users.filter(u => u.status === "pending"));
+            setDusunHeads(data.users.filter(u => u.role === "dusun_head"));
+            setCitizens(data.users.filter(u => u.role === "citizen"));
+          }
+        }
+
+        await fetchGalleryItems(); 
         // Fetch requests
         const requestsResponse = await apiFetch('/api/requests', {
           credentials: 'include'
@@ -732,6 +488,22 @@ const OperatorDashboard = () => {
           setArticles(data.articles || []);
         }
 
+        const agendaResponse = await apiFetch('/agenda', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+        if (agendaResponse.ok) {
+            const data = await agendaResponse.json();
+            // ASUMSI: Backend Laravel mengembalikan { "agendas": [...] }
+            setAgendaItems(data.agendas || []);
+            console.log(`✅ Fetched ${data.agendas.length} agendas from API.`);
+        } else {
+            console.error('❌ Failed to fetch agendas from API:', agendaResponse.status);
+            // Opsional: set ke array kosong jika gagal fetch
+            setAgendaItems([]); 
+        }
         // Fetch transparency data
         const transparencyResponse = await apiFetch('/api/transparency/all', {
           credentials: 'include'
@@ -758,7 +530,6 @@ const OperatorDashboard = () => {
         //   const data = await rtResponse.json();
         //   // setRTData(data.rt_data || []);
         // }
-
         // Mock services data - sesuai dengan Administrasi.tsx
         setServices([
           {
@@ -823,76 +594,6 @@ const OperatorDashboard = () => {
           }
         ]);
 
-        // Mock agenda data
-        setAgendaItems([
-          {
-            id: 1,
-            title: 'Rapat Koordinasi RT/RW',
-            description: 'Rapat bulanan koordinasi dengan seluruh RT dan RW',
-            date: '2024-11-15',
-            time: '09:00',
-            location: 'Balai Desa Fajar Baru',
-            category: 'rapat',
-            status: 'scheduled',
-            created_at: new Date().toISOString()
-          },
-          {
-            id: 2,
-            title: 'Posyandu Balita',
-            description: 'Pemeriksaan kesehatan dan imunisasi balita',
-            date: '2024-11-20',
-            time: '08:00',
-            location: 'Posyandu Dusun Mawar',
-            category: 'kesehatan',
-            status: 'scheduled',
-            created_at: new Date().toISOString()
-          },
-          {
-            id: 3,
-            title: 'Gotong Royong Kebersihan',
-            description: 'Kerja bakti membersihkan lingkungan desa',
-            date: '2024-11-25',
-            time: '06:00',
-            location: 'Seluruh Wilayah Desa',
-            category: 'sosial',
-            status: 'scheduled',
-            created_at: new Date().toISOString()
-          }
-        ]);
-
-        // Mock gallery data
-        setGalleryItems([
-          {
-            id: 1,
-            title: 'Upacara HUT RI ke-79',
-            description: 'Upacara peringatan kemerdekaan Indonesia',
-            image_url: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800',
-            category: 'kegiatan',
-            uploaded_by: user?.id || 1,
-            status: 'published',
-            created_at: new Date().toISOString()
-          },
-          {
-            id: 2,
-            title: 'Pembangunan Jalan Desa',
-            description: 'Progress pembangunan infrastruktur jalan desa',
-            image_url: 'https://images.unsplash.com/photo-1581094794329-c8112a89af12?w=800',
-            category: 'pembangunan',
-            uploaded_by: user?.id || 1,
-            status: 'published',
-            created_at: new Date().toISOString()
-          },
-          {
-            id: 3,
-            title: 'Pelatihan UMKM',
-            description: 'Workshop pengembangan usaha mikro kecil menengah',
-            image_url: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=800',
-            category: 'ekonomi',
-            uploaded_by: user?.id || 1,
-            status: 'published',
-            created_at: new Date().toISOString()
-          }
-        ]);
 
         // Mock PPID services data - informasi publik yang lengkap
         setPpidServices([
@@ -1091,7 +792,7 @@ const OperatorDashboard = () => {
       id: 'users', 
       label: 'Kelola Pengguna', 
       icon: Users, 
-      badge: pendingCount
+      badge: `${pendingUsers.length}`
     },
     { id: 'population', label: 'Kelola Penduduk', icon: Building2 },
     { id: 'services', label: 'Kelola Layanan', icon: FileText },
@@ -1722,10 +1423,14 @@ const OperatorDashboard = () => {
 
   const handleApproveUser = async (userId: number) => {
     try {
-      const response = await apiFetch('/api/auth/approve-user', {
+      const token = localStorage.getItem("auth_token");
+      const response = await apiFetch('/approve-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
         body: JSON.stringify({ user_id: userId, action: 'approve' })
       });
 
@@ -1743,7 +1448,7 @@ const OperatorDashboard = () => {
 
   const handleRejectUser = async (userId: number) => {
     try {
-      const response = await apiFetch('/api/auth/approve-user', {
+      const response = await apiFetch('/api/auth/reject-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1897,79 +1602,171 @@ const OperatorDashboard = () => {
   };
 
   const handleSaveAgenda = async (agendaData: AgendaItem) => {
-    try {
-      // Simulasi save ke backend
-      // Untuk produksi, ganti dengan API call yang sebenarnya
-      const newAgenda = {
-        ...agendaData,
-        id: selectedAgenda?.id || Date.now(),
-        created_at: selectedAgenda?.created_at || new Date().toISOString()
-      };
+      try {
+          setSubmitting(true); // Asumsi Anda memiliki state submitting untuk tombol loading
 
-      if (selectedAgenda) {
-        setAgendaItems(prev => prev.map(a => a.id === selectedAgenda.id ? newAgenda : a));
-      } else {
-        setAgendaItems(prev => [newAgenda, ...prev]);
+          // 1. Persiapkan data untuk dikirim ke API
+          const dataToSend = {
+              title: agendaData.title,
+              description: agendaData.description,
+              // Gabungkan tanggal dan waktu menjadi format ISO string jika diperlukan oleh backend
+              // Atau kirim terpisah jika backend ingin memprosesnya sendiri.
+              // Kita kirim sebagai string terpisah sesuai yang diketik user
+              date: agendaData.date, 
+              time: agendaData.time, 
+              location: agendaData.location,
+              category: agendaData.category.toLowerCase(), // Pastikan konsisten
+              status: 'scheduled', // Status default saat membuat baru
+          };
+
+          const token = localStorage.getItem("auth_token");
+          
+          // Cek apakah ini edit atau buat baru
+          const isEdit = !!selectedAgenda;
+          const url = isEdit ? `/agenda/${selectedAgenda!.id}` : '/agenda';
+          const method = isEdit ? 'PUT' : 'POST';
+
+          console.log(`Sending ${method} request to ${url} with data:`, dataToSend);
+
+          // 2. Lakukan panggilan API menggunakan apiFetch (diasumsikan sudah dikonfigurasi)
+          const response = await apiFetch(url, {
+              method,
+              headers: { 
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(dataToSend)
+          });
+
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.message || `Gagal menyimpan agenda: Status ${response.status}`);
+          }
+
+          const data = await response.json();
+          const savedAgenda = data.agenda; // Asumsi API mengembalikan objek agenda yang baru/diperbarui
+
+          // 3. Update state lokal (Simulasi berhasil)
+          if (isEdit) {
+              setAgendaItems(prev => prev.map(a => a.id === selectedAgenda!.id ? savedAgenda : a));
+          } else {
+              setAgendaItems(prev => [savedAgenda, ...prev]);
+          }
+
+          setSelectedAgenda(null);
+          setEditorMode('list');
+          alert(`Agenda "${savedAgenda.title}" berhasil disimpan!`);
+
+      } catch (error) {
+          console.error('Failed to save agenda:', error);
+          alert(`Gagal menyimpan agenda. Cek console untuk detail error.`);
+          // Re-throw untuk ditangkap oleh komponen pemanggil jika perlu (opsional)
+          // throw error; 
+      } finally {
+          setSubmitting(false);
       }
-      
-      setSelectedAgenda(null);
-      setEditorMode('list');
-      alert('Agenda berhasil disimpan!');
-    } catch (error) {
-      console.error('Failed to save agenda:', error);
-      throw error;
-    }
   };
 
-  const handleSaveGallery = async (galleryData: GalleryItem) => {
-    try {
-      // Simulasi save ke backend
-      // Untuk produksi, ganti dengan API call yang sebenarnya
-      const newGallery = {
-        ...galleryData,
-        id: selectedGallery?.id || Date.now(),
-        uploaded_by: user?.id || 1,
-        created_at: selectedGallery?.created_at || new Date().toISOString()
+  const handleSaveGallery = async (galleryData: GalleryItem, imageFile: File | null) => {
+      try {
+          setSubmitting(true);
+
+          const isEdit = !!galleryData.id;
+          const url = isEdit ? `/gallery/${galleryData.id}` : `/gallery`;
+          const method = isEdit ? "POST" : "POST"; // atau PUT jika backend kamu pakai PUT
+
+          const formData = new FormData();
+          formData.append("title", galleryData.title);
+          formData.append("description", galleryData.description || "");
+          formData.append("category", galleryData.category);
+          formData.append("status", galleryData.status);
+
+          if (imageFile) {
+              formData.append("image", imageFile);
+          }
+
+          // Jika edit, dan user tidak upload gambar baru
+          if (isEdit && !imageFile) {
+              formData.append("image_url", galleryData.image_url || "");
+          }
+
+          const token = localStorage.getItem("auth_token");
+
+          const response = await apiFetch(url, {
+              method,
+              body: formData,
+              headers: {
+                  Authorization: `Bearer ${token}`,
+              }
+          });
+
+          if (!response.ok) {
+              const err = await response.json();
+              console.log(err);
+              alert("Gagal menyimpan galeri");
+              return;
+          }
+
+          const savedGallery = await response.json(); // karena API return langsung object
+
+          // 🔥 reload data dari server, tidak update manual state
+          await fetchGalleryItems();
+
+          setSelectedGallery(null);
+          setEditorMode("list");
+
+          alert(`Galeri "${savedGallery.title}" berhasil disimpan!`);
+
+        } catch (e) {
+          console.error(e);
+          alert("Terjadi kesalahan saat menyimpan galeri.");
+        } finally {
+          setSubmitting(false);
+        }
       };
 
-      if (selectedGallery) {
-        setGalleryItems(prev => prev.map(g => g.id === selectedGallery.id ? newGallery : g));
-      } else {
-        setGalleryItems(prev => [newGallery, ...prev]);
-      }
-      
-      setSelectedGallery(null);
-      setEditorMode('list');
-      alert('Foto galeri berhasil disimpan!');
-    } catch (error) {
-      console.error('Failed to save gallery:', error);
-      throw error;
-    }
-  };
+   const handleSaveService = async (serviceData: Service) => {
 
-  const handleSaveService = async (serviceData: Service) => {
     try {
+
       // Simulasi save ke backend
+
       // Untuk produksi, ganti dengan API call yang sebenarnya
+
       const newService = {
+
         ...serviceData,
+
         id: selectedService?.id || Date.now()
+
       };
 
       if (selectedService) {
+
         setServices(prev => prev.map(s => s.id === selectedService.id ? newService : s));
+
       } else {
+
         setServices(prev => [newService, ...prev]);
+
       }
-      
+
       setSelectedService(null);
+
       setServiceEditorMode('list');
+
       alert('Layanan berhasil disimpan!');
+
     } catch (error) {
+
       console.error('Failed to save service:', error);
+
       throw error;
+
     }
+
   };
+
 
   const handleSavePPID = async (ppidData: PPIDService) => {
     try {
@@ -3476,7 +3273,7 @@ const OperatorDashboard = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {services.map((service) => (
+                  {services?.filter(item => item && item.id).map((service) => (
                     <div key={service.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-lg transition-all duration-200 hover:border-blue-300">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
@@ -3781,12 +3578,9 @@ const OperatorDashboard = () => {
     if (editorMode === 'gallery') {
       return (
         <GalleryEditor
-          item={selectedGallery}
-          onSave={handleSaveGallery}
-          onCancel={() => {
-            setEditorMode('list');
-            setSelectedGallery(null);
-          }}
+            item={selectedGallery}
+            onSave={(item, file) => handleSaveGallery(item, file)}
+            onCancel={() => setEditorMode("list")}
         />
       );
     }
@@ -4069,81 +3863,113 @@ const OperatorDashboard = () => {
           </div>
         )}
 
-        {informationSubTab === 'gallery' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-semibold text-gray-900">Galeri Desa</h3>
-              <button 
-                onClick={() => {
-                  setSelectedGallery(null);
-                  setEditorMode('gallery');
-                }}
-                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg"
+{informationSubTab === 'gallery' && (
+  <div className="space-y-6">
+
+    {/* Header */}
+    <div className="flex justify-between items-center">
+      <h3 className="text-xl font-semibold text-gray-900">Galeri Desa</h3>
+      <button
+        onClick={() => {
+          setSelectedGallery(null);
+          setEditorMode('gallery');
+        }}
+        className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all duration-200 shadow-md hover:shadow-lg"
+      >
+        <Upload className="w-4 h-4" />
+        <span>Upload Foto</span>
+      </button>
+    </div>
+
+    {/* Statistik */}
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
+        <div className="text-2xl font-bold text-emerald-600">
+          {galleryItems?.length || 0}
+        </div>
+        <div className="text-sm text-gray-700">Total Foto</div>
+      </div>
+
+      <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
+        <div className="text-2xl font-bold text-emerald-600">
+          {galleryItems?.filter(g => g?.status === 'published').length || 0}
+        </div>
+        <div className="text-sm text-gray-700">Published</div>
+      </div>
+
+      <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+        <div className="text-2xl font-bold text-blue-600">
+          {galleryItems?.filter(g => g?.category === 'kegiatan').length || 0}
+        </div>
+        <div className="text-sm text-gray-700">Kegiatan</div>
+      </div>
+    </div>
+
+    {/* Gallery List */}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      {!galleryItems || galleryItems.length === 0 ? (
+        <div className="text-center py-12">
+          <Image className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500 text-lg">Belum ada foto</p>
+          <p className="text-gray-400 text-sm mt-2">
+            Klik tombol "Upload Foto" untuk menambah foto baru
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {galleryItems
+            .filter(item => item)
+            .map((item) => (
+              <div
+                key={item.id}
+                className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-200 hover:border-emerald-300"
               >
-                <Upload className="w-4 h-4" />
-                <span>Upload Foto</span>
-              </button>
-            </div>
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                  <div className="flex gap-4 flex-1">
 
-            {/* Statistics */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-                <div className="text-2xl font-bold text-emerald-600">{galleryItems.length}</div>
-                <div className="text-sm text-gray-700">Total Foto</div>
-              </div>
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-                <div className="text-2xl font-bold text-emerald-600">{galleryItems.filter(g => g.status === 'published').length}</div>
-                <div className="text-sm text-gray-700">Published</div>
-              </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-                <div className="text-2xl font-bold text-blue-600">{galleryItems.filter(g => g.category === 'kegiatan').length}</div>
-                <div className="text-sm text-gray-700">Kegiatan</div>
-              </div>
-            </div>
+                    {/* Thumbnail */}
+                    <div className="flex-shrink-0 w-32 h-24 bg-gray-100 rounded-lg overflow-hidden">
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="w-full h-full object-cover hover:scale-110 transition-transform duration-300 cursor-pointer"
+                        onClick={() => window.open(item.image_url, '_blank')}
+                      />
+                    </div>
 
-            {/* Gallery List */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              {galleryItems.length === 0 ? (
-                <div className="text-center py-12">
-                  <Image className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-lg">Belum ada foto</p>
-                  <p className="text-gray-400 text-sm mt-2">Klik tombol "Upload Foto" untuk menambah foto baru</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {galleryItems.map((item) => (
-                    <div key={item.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all duration-200 hover:border-emerald-300">
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                        <div className="flex gap-4 flex-1">
-                          {/* Thumbnail */}
-                          <div className="flex-shrink-0 w-32 h-24 bg-gray-100 rounded-lg overflow-hidden">
-                            <img 
-                              src={item.image_url} 
-                              alt={item.title}
-                              className="w-full h-full object-cover hover:scale-110 transition-transform duration-300 cursor-pointer"
-                              onClick={() => window.open(item.image_url, '_blank')}
-                            />
-                          </div>
-                          
-                          {/* Info */}
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-gray-900 text-lg mb-1">{item.title}</h4>
-                            <p className="text-sm text-gray-600 mb-3 line-clamp-2">{item.description}</p>
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">
-                                {item.category}
-                              </span>
-                              <span className={`px-3 py-1 rounded-full font-medium ${
-                                item.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'
-                              }`}>
-                                {item.status === 'published' ? 'Published' : 'Draft'}
-                              </span>
-                              <span className="text-gray-500">
-                                {item.created_at ? new Date(item.created_at).toLocaleDateString('id-ID') : '-'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                    {/* Informasi */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-gray-900 text-lg mb-1">
+                        {item.title}
+                      </h4>
+
+                      <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                        {item.description}
+                      </p>
+
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+                          {item.category}
+                        </span>
+
+                        <span
+                          className={`px-3 py-1 rounded-full font-medium ${
+                            item.status === 'published'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {item.status === 'published' ? 'Published' : 'Draft'}
+                        </span>
+
+                        <span className="text-gray-500">
+                          {item.created_at
+                            ? new Date(item.created_at).toLocaleDateString('id-ID')
+                            : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                         
                         {/* Actions */}
                         <div className="flex items-center space-x-2 md:flex-shrink-0">
