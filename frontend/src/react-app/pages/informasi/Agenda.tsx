@@ -1,4 +1,5 @@
 import PageLayout from '@/react-app/components/PageLayout';
+import { apiFetch } from '@/react-app/lib/api';
 import { Calendar, Clock, MapPin, Filter, Search } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 
@@ -15,9 +16,7 @@ const AgendaPage = () => {
       // Tidak perlu setLoading(true) di sini karena sudah true saat inisialisasi
       try {
         // Ganti fetch lokal menjadi fetch yang seharusnya digunakan di lingkungan client/Next.js
-        const res = await fetch("http://127.0.0.1:8000/api/agenda/", {
-          method: "GET"
-        });
+        const res = await apiFetch("/agenda", { credentials: "include" })
 
         if (!res.ok) throw new Error("Gagal mengambil data agenda");
 
@@ -67,23 +66,11 @@ const AgendaPage = () => {
     );
   }, [agenda, month, query]);
 
-  // Hapus blok kondisional loading dan error di sini, pindahkan ke PageLayout
-  // if (loading) return <div className="p-10 text-center">Memuat data...</div>;
-  // if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
-
-
   return (
     <PageLayout
       title="Agenda Kegiatan Desa"
       subtitle="Jadwal kegiatan dan acara resmi Desa Fajar Baru"
       breadcrumb={[{ name: 'Beranda', href: '/' }, { name: 'Informasi' }, { name: 'Agenda Kegiatan' }]}
-      // TAMBAHKAN PROPS LOADING DAN ERROR DI SINI
-      loading={loading}
-      error={error}
-      // Konten loading kustom jika PageLayout mendukungnya
-      loadingContent={<div className="p-10 text-center">Memuat data agenda...</div>}
-      // Konten error kustom jika PageLayout mendukungnya
-      errorContent={<div className="p-10 text-center text-red-500">{error}</div>}
     >
       <div className="py-16">
         <div className="container mx-auto px-4">
@@ -122,7 +109,15 @@ const AgendaPage = () => {
           </div>
 
           {/* Grid */}
-          {filtered.length > 0 ? (
+          {loading ? (
+            <div className="text-center py-10">
+                <p className="text-gray-600">Memuat...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-10">
+                <p className="text-red-500">{error}</p>
+            </div>
+          ) : filtered.length > 0 ? (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filtered.map((a: any, i: any) => (
                 <div

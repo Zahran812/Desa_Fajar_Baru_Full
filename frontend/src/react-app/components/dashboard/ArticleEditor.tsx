@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Save, X, Eye, Upload, Image as ImageIcon, 
   Bold, Italic, List, Link as LinkIcon, 
@@ -13,6 +13,7 @@ interface Article {
   content: string;
   excerpt: string;
   image_url?: string;
+  image_path?: string; // Backend sends image_path
   category: string;
   status: string;
   featured: boolean;
@@ -24,7 +25,7 @@ interface Article {
 
 interface ArticleEditorProps {
   article?: Article | null;
-  onSave: (article: Article) => Promise<void>;
+  onSave: (article: Article, imageFile: File | null) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -42,12 +43,21 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
 
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [imagePreview, setImagePreview] = useState('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (article) {
       setFormData(article);
-      setImagePreview(article.image_url || '');
+      // Use the image_url provided by the backend model accessor directly
+      if (article.image_url) {
+        setImagePreview(article.image_url);
+      } else if (article.image_path) { // Fallback if image_url is not set but image_path exists
+        setImagePreview(`/storage/${article.image_path}`); // Ensure this is also the public path
+      } else {
+        setImagePreview(null);
+      }
     }
   }, [article]);
 
@@ -65,9 +75,27 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
     }));
   };
 
-  const handleImageUrlChange = (url: string) => {
-    setFormData(prev => ({ ...prev, image_url: url }));
-    setImagePreview(url);
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      // Create a local URL for preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    // Also clear image_path/image_url from form data
+    setFormData(prev => ({...prev, image_path: '', image_url: ''}));
   };
 
   const handleSave = async (status: 'draft' | 'published') => {
@@ -83,7 +111,8 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
 
     setSaving(true);
     try {
-      await onSave({ ...formData, status });
+      // Pass both form data and the selected image file
+      await onSave({ ...formData, status }, imageFile);
     } catch (error) {
       console.error('Error saving article:', error);
       alert('Gagal menyimpan artikel');
@@ -204,40 +233,38 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
               </label>
               
               <div className="space-y-4">
-                <input
-                  type="text"
-                  value={formData.image_url}
-                  onChange={(e) => handleImageUrlChange(e.target.value)}
-                  placeholder="URL gambar (https://...)"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                />
-                
-                {imagePreview && (
+                {imagePreview ? (
                   <div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100">
                     <img 
                       src={imagePreview} 
                       alt="Preview" 
                       className="w-full h-full object-cover"
-                      onError={() => setImagePreview('')}
                     />
                     <button
-                      onClick={() => {
-                        setFormData(prev => ({ ...prev, image_url: '' }));
-                        setImagePreview('');
-                      }}
-                      className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all"
+                      onClick={handleRemoveImage}
+                      className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-all"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
+                ) : (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="cursor-pointer aspect-video bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-500 hover:bg-gray-200 hover:border-gray-400 transition-all"
+                  >
+                    <Upload className="w-10 h-10 mb-2" />
+                    <span className="font-semibold">Klik untuk mengunggah gambar</span>
+                    <span className="text-xs">PNG, JPG, WEBP (Maks. 2MB)</span>
+                  </div>
                 )}
-
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-xs text-blue-800">
-                    <Upload className="w-3 h-3 inline mr-1" />
-                    Gunakan URL gambar dari CDN atau pastikan gambar sudah diupload ke server
-                  </p>
-                </div>
+                
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png, image/jpeg, image/webp"
+                  onChange={handleImageFileChange}
+                  className="hidden"
+                />
               </div>
             </div>
 

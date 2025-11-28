@@ -8,9 +8,9 @@ import GalleryEditor from '@/react-app/components/dashboard/GalleryEditor';
 import ServiceEditor from '@/react-app/components/dashboard/ServiceEditor';
 import PPIDEditor from '@/react-app/components/dashboard/PPIDEditor';
 import TransparencyEditor from '@/react-app/components/dashboard/TransparencyEditor';
-import { mockArticles, mockTransparencyData, mockVillagePrograms } from '@/react-app/data/mockInformationData';
-import { 
-  Users, UserPlus, Settings, Home, Shield, 
+import { mockTransparencyData, mockVillagePrograms } from '@/react-app/data/mockInformationData';
+import {
+  Users, UserPlus, Settings, Home, Shield,
   Clock, CheckCircle, XCircle, Plus, Edit3, Trash2,
   FileText, Upload, Download,
   Eye, Search, User, Mail, Phone, Calendar, MessageSquare,
@@ -18,7 +18,8 @@ import {
   BarChart3, DollarSign, Briefcase, Building2,
   TrendingUp, Globe, Heart, Award, Construction, ShoppingCart,
   GraduationCap, Stethoscope, Image, CalendarDays, Info, MapPin,
-  HelpCircle, FileSpreadsheet, List, LayoutGrid, UserCheck, CreditCard, AlertCircle
+  HelpCircle, FileSpreadsheet, List, LayoutGrid, UserCheck, CreditCard, AlertCircle,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Link } from 'react-router-dom';
@@ -67,15 +68,24 @@ interface User {
 interface Request {
   id: number;
   user_id: number;
+  service_id: number;
   request_type: string;
   subject: string;
   description: string;
   status: string;
-  documents?: string;
+  documents?: any[];
   response?: string;
   created_at: string;
   updated_at: string;
   user_name?: string;
+  user?: {
+    id: number;
+    full_name: string;
+  };
+  service?: {
+    id: number;
+    name: string;
+  };
 }
 
 interface PopulationData {
@@ -101,11 +111,16 @@ interface Article {
   slug: string;
   content: string;
   excerpt: string;
-  image_url?: string;
-  category: string;
-  author_id?: number;
+  image_url?: string; // Still useful for frontend processing if not from direct upload
+  image_path?: string; // Path from backend storage
+  category: string; // Not currently used in backend, but kept for frontend compatibility
   status: string;
-  featured: boolean;
+  featured: boolean; // Required to match ArticleEditor
+  author_id?: number;
+  author?: {
+    id: number;
+    name: string;
+  };
   views?: number;
   created_at?: string;
   updated_at?: string;
@@ -180,7 +195,7 @@ interface Service {
   fee: number;
   status: string;
   category: string;
-  templates?: { id?: number; name: string; file_url: string; }[];
+  templates?: { id?: number; name: string; file_url: string; file_object?: File | null; }[];
 }
 
 interface PPIDService {
@@ -252,13 +267,25 @@ const OperatorDashboard = () => {
   const [requests, setRequests] = useState<Request[]>([]);
   const [messages, setMessages] = useState<AppMessage[]>([]);
   const [populationData, setPopulationData] = useState<PopulationData[]>([]);
-  const [articles, setArticles] = useState<Article[]>(mockArticles);
+  const [articles, setArticles] = useState<Article[]>([]);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
   const [transparencyData, setTransparencyData] = useState<TransparencyData[]>(mockTransparencyData);
   const [villagePrograms, setVillagePrograms] = useState<VillageProgram[]>(mockVillagePrograms);
   const [services, setServices] = useState<Service[]>([]);
   const [ppidServices, setPpidServices] = useState<PPIDService[]>([]);
+
+  // Loading states
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [agendaLoading, setAgendaLoading] = useState(false);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+
+  // Pagination states
+  const [servicesPage, setServicesPage] = useState(1);
+  const [requestsPage, setRequestsPage] = useState(1);
+  const ITEMS_PER_PAGE_SERVICES = 6;
+  const ITEMS_PER_PAGE_REQUESTS = 8;
 
   // Messages UI state
   const [messageCategory, setMessageCategory] = useState<MessageCategory | 'all'>('all');
@@ -313,7 +340,21 @@ const OperatorDashboard = () => {
   // Editor mode for PPID tab
   const [ppidEditorMode, setPpidEditorMode] = useState<'list' | 'editor'>('list');
   const [selectedPPID, setSelectedPPID] = useState<PPIDService | null>(null);
-  
+
+  // Service Management Modals
+  const [showServiceDetailModal, setShowServiceDetailModal] = useState(false);
+  const [serviceDetailModalData, setServiceDetailModalData] = useState<Service | null>(null);
+
+  // Request Management
+  const [allRequests, setAllRequests] = useState<Request[]>([]);
+  const [showRequestDetailModal, setShowRequestDetailModal] = useState(false);
+  const [requestDetailModalData, setRequestDetailModalData] = useState<Request | null>(null);
+  const [requestSearchQuery, setRequestSearchQuery] = useState('');
+  const [requestFilterService, setRequestFilterService] = useState('all');
+  const [approvalFile, setApprovalFile] = useState<File | null>(null);
+  const [submittingApproval, setSubmittingApproval] = useState(false);
+  const [responseText, setResponseText] = useState(''); // Catatan untuk approve/reject
+
   // Profile and Settings
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -379,34 +420,183 @@ const OperatorDashboard = () => {
     dusun: ''
   });
 
-  const fetchGalleryItems = async () => {
-    const galleryResponse = await apiFetch('/gallery', {
-      credentials: 'include'
+  const fetchServices = async () => {
+    setServicesLoading(true);
+    try {
+        const token = localStorage.getItem("auth_token");
+        // Demo data for pending users (always loaded for demo)
+        const response = await apiFetch("/admin/services", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+
+      if (!response.ok) {
+        console.error('Failed to fetch services');
+        setServices([]);
+        return;
+      }
+
+      const data = await response.json();
+
+      // Data yang diterima langsung berupa array
+      const items = Array.isArray(data) ? data : [];
+
+      const validItems = items.filter((item: Service) =>
+        item &&
+        typeof item === 'object' &&
+        'id' in item &&
+        'name' in item &&
+        'description' in item &&
+        'requirements' in item &&
+        Array.isArray(item.requirements) &&
+        'processing_time' in item &&
+        'fee' in item &&
+        'status' in item &&
+        'category' in item &&
+        'templates' in item &&
+        Array.isArray(item.templates)
+      );
+
+      setServices(validItems);
+
+    } catch (error) {
+      console.error('Error fetching services:', error);
+      setServices([]);
+    } finally {
+      setServicesLoading(false);
+    }
+  };
+
+  const fetchAllRequests = async () => {
+  setRequestsLoading(true);
+  try {
+    const token = localStorage.getItem("auth_token");
+
+    const response = await apiFetch("/requests/all", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
     });
 
-    if (!galleryResponse.ok) {
-      console.error('Failed to fetch gallery items');
-      setGalleryItems([]);
+    if (!response.ok) {
+      console.error("Failed to fetch requests");
+      setRequests([]);
       return;
     }
 
-    const data = await galleryResponse.json();
+    const data = await response.json();
 
-    // Pastikan ambil array dari field `galleries`
-    const items = Array.isArray(data.galleries) ? data.galleries : [];
+    // Data harus berupa objek dengan field 'requests'
+    const items = Array.isArray(data.requests) ? data.requests : [];
 
-    // Validasi item seperti sebelumnya
-    const validItems = items.filter(item =>
+    const validItems = items.filter((item: Request) =>
       item &&
-      typeof item === 'object' &&
-      'id' in item &&
-      'title' in item &&
-      'image_url' in item &&
-      'category' in item &&
-      'status' in item
+      typeof item === "object" &&
+
+      "id" in item &&
+      "user_id" in item &&
+      "service_id" in item &&
+      "request_type" in item &&
+      "subject" in item &&
+      "description" in item &&
+      "status" in item &&
+
+      // validasi relasi user
+      "user" in item &&
+      item.user &&
+      typeof item.user === "object" &&
+      "id" in item.user &&
+      "full_name" in item.user &&
+
+      // validasi relasi service
+      "service" in item &&
+      item.service &&
+      typeof item.service === "object" &&
+      "id" in item.service &&
+      "name" in item.service &&
+
+      // validasi dokumen
+      "documents" in item &&
+      Array.isArray(item.documents)
     );
 
-    setGalleryItems(validItems);
+    setAllRequests(validItems);
+
+  } catch (error) {
+    console.error("Error fetching requests:", error);
+    setAllRequests([]);
+  } finally {
+    setRequestsLoading(false);
+  }
+};
+
+
+  const fetchGalleryItems = async () => {
+    setGalleryLoading(true);
+    try {
+      const galleryResponse = await apiFetch('/gallery', {
+        credentials: 'include'
+      });
+
+      if (!galleryResponse.ok) {
+        console.error('Failed to fetch gallery items');
+        setGalleryItems([]);
+        return;
+      }
+
+      const data = await galleryResponse.json();
+
+      // Pastikan ambil array dari field `galleries`
+      const items = Array.isArray(data.galleries) ? data.galleries : [];
+
+      // Validasi item seperti sebelumnya
+      const validItems = items.filter((item: any) =>
+        item &&
+        typeof item === 'object' &&
+        'id' in item &&
+        'title' in item &&
+        'image_url' in item &&
+        'category' in item &&
+        'status' in item
+      );
+
+      setGalleryItems(validItems);
+    } catch (error) {
+      console.error('Error fetching gallery:', error);
+      setGalleryItems([]);
+    } finally {
+      setGalleryLoading(false);
+    }
+  };
+
+  const fetchArticles = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await apiFetch('/dashboard/articles', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch articles');
+        setArticles([]);
+        return;
+      }
+
+      const data = await response.json();
+      // Laravel's paginate returns data in 'data' field
+      const items = Array.isArray(data.data) ? data.data : [];
+      
+      setArticles(items);
+    } catch (error) {
+      console.error('Error fetching articles:', error);
+      setArticles([]);
+    }
   };
 
 
@@ -451,27 +641,27 @@ const OperatorDashboard = () => {
 
           // Jika backend hanya return satu array user ⇒ kita pisahkan manual
           if (Array.isArray(data.users)) {
-            setPendingUsers(data.users.filter(u => u.status === "pending"));
-            setDusunHeads(data.users.filter(u => u.role === "dusun_head"));
-            setCitizens(data.users.filter(u => u.role === "citizen"));
+            setPendingUsers(data.users.filter((u: User) => u.status === "pending"));
+            setDusunHeads(data.users.filter((u: User) => u.role === "dusun_head"));
+            setCitizens(data.users.filter((u: User) => u.role === "citizen"));
           }
         }
 
         await fetchGalleryItems(); 
-        // Fetch requests
-        const requestsResponse = await apiFetch('/api/requests', {
-          credentials: 'include'
-        });
-        if (requestsResponse.ok) {
-          const data = await requestsResponse.json();
-          setRequests(data.requests || []);
-        }
+        // Fetch requests // This block was commented out, removed it entirely
+        // const requestsResponse = await apiFetch('/api/requests', {
+        //   credentials: 'include'
+        // });
+        // if (requestsResponse.ok) {
+        //   const data = await requestsResponse.json();
+        //   setRequests(data.requests || []);
+        // }
 
         // Load messages from local store (demo)
         setMessages(getReceivedFor(user.id));
 
         // Fetch population data
-        const populationResponse = await apiFetch('/api/population', {
+        const populationResponse = await apiFetch('/population', {
           credentials: 'include'
         });
         if (populationResponse.ok) {
@@ -480,41 +670,43 @@ const OperatorDashboard = () => {
         }
 
         // Fetch articles
-        const articlesResponse = await apiFetch('/api/articles', {
-          credentials: 'include'
-        });
-        if (articlesResponse.ok) {
-          const data = await articlesResponse.json();
-          setArticles(data.articles || []);
-        }
+        await fetchArticles();
 
-        const agendaResponse = await apiFetch('/agenda', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        });
-        if (agendaResponse.ok) {
-            const data = await agendaResponse.json();
-            // ASUMSI: Backend Laravel mengembalikan { "agendas": [...] }
-            setAgendaItems(data.agendas || []);
-            console.log(`✅ Fetched ${data.agendas.length} agendas from API.`);
-        } else {
-            console.error('❌ Failed to fetch agendas from API:', agendaResponse.status);
-            // Opsional: set ke array kosong jika gagal fetch
-            setAgendaItems([]); 
+        setAgendaLoading(true);
+        try {
+          const agendaResponse = await apiFetch('/agenda', {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/json",
+            },
+          });
+          if (agendaResponse.ok) {
+              const data = await agendaResponse.json();
+              // ASUMSI: Backend Laravel mengembalikan { "agendas": [...] }
+              setAgendaItems(data.agendas || []);
+              console.log(`✅ Fetched ${data.agendas.length} agendas from API.`);
+          } else {
+              console.error('❌ Failed to fetch agendas from API:', agendaResponse.status);
+              // Opsional: set ke array kosong jika gagal fetch
+              setAgendaItems([]);
+          }
+        } catch (error) {
+          console.error('Error fetching agenda:', error);
+          setAgendaItems([]);
+        } finally {
+          setAgendaLoading(false);
         }
         // Fetch transparency data
-        const transparencyResponse = await apiFetch('/api/transparency/all', {
+        const transparencyResponse = await apiFetch('/transparency/all', {
           credentials: 'include'
         });
         if (transparencyResponse.ok) {
-          const data = await transparencyResponse.json();
-          setTransparencyData(data.data || []);
+          const responseData = await transparencyResponse.json();
+          setTransparencyData(responseData.data || []);
         }
 
         // Fetch village programs
-        const programsResponse = await apiFetch('/api/programs', {
+        const programsResponse = await apiFetch('/programs', {
           credentials: 'include'
         });
         if (programsResponse.ok) {
@@ -522,78 +714,19 @@ const OperatorDashboard = () => {
           setVillagePrograms(data.programs || []);
         }
 
-        // Fetch RT data (commented out for now)
-        // const rtResponse = await fetch('/api/rt-data', {
-        //   credentials: 'include'
-        // });
-        // if (rtResponse.ok) {
-        //   const data = await rtResponse.json();
-        //   // setRTData(data.rt_data || []);
-        // }
+        // Fetch RT data (now uncommented and standardized)
+        const rtResponse = await apiFetch('/rt-data', {
+          credentials: 'include'
+        });
+        if (rtResponse.ok) {
+          // setRTData(data.rt_data || []); // Assuming you have a state for this
+        }
+        
         // Mock services data - sesuai dengan Administrasi.tsx
-        setServices([
-          {
-            id: 1,
-            name: 'Surat Keterangan Domisili',
-            description: 'Pengurusan surat keterangan domisili untuk berbagai keperluan',
-            requirements: ['KTP asli dan fotocopy', 'KK asli dan fotocopy', 'Surat pengantar RT/RW', 'Formulir permohonan'],
-            processing_time: '3-5 hari',
-            fee: 0,
-            status: 'active',
-            category: 'administrasi'
-          },
-          {
-            id: 2,
-            name: 'Kartu Keluarga',
-            description: 'Pembuatan dan perubahan Kartu Keluarga',
-            requirements: ['Surat pengantar RT/RW', 'Akta nikah/cerai (jika ada)', 'Akta kelahiran seluruh anggota keluarga', 'KTP kepala keluarga', 'KK lama (jika perubahan)'],
-            processing_time: '7-14 hari',
-            fee: 0,
-            status: 'active',
-            category: 'administrasi'
-          },
-          {
-            id: 3,
-            name: 'Akta Kelahiran',
-            description: 'Pengurusan akta kelahiran untuk bayi baru lahir',
-            requirements: ['Surat keterangan lahir dari bidan/dokter', 'KTP kedua orang tua', 'KK asli dan fotocopy', 'Akta nikah orang tua', 'Formulir permohonan'],
-            processing_time: '5-7 hari',
-            fee: 0,
-            status: 'active',
-            category: 'administrasi'
-          },
-          {
-            id: 4,
-            name: 'Surat Pindah',
-            description: 'Pengurusan surat pindah dan pindah datang',
-            requirements: ['KTP asli dan fotocopy', 'KK asli dan fotocopy', 'Surat pengantar RT/RW', 'Surat keterangan akan pindah', 'Formulir permohonan'],
-            processing_time: '3-5 hari',
-            fee: 0,
-            status: 'active',
-            category: 'administrasi'
-          },
-          {
-            id: 5,
-            name: 'Surat Keterangan Usaha',
-            description: 'Surat keterangan untuk keperluan usaha dan bisnis',
-            requirements: ['KTP asli dan fotocopy', 'KK asli dan fotocopy', 'Surat pengantar RT/RW', 'Foto lokasi usaha', 'Formulir permohonan'],
-            processing_time: '5-7 hari',
-            fee: 0,
-            status: 'active',
-            category: 'ekonomi'
-          },
-          {
-            id: 6,
-            name: 'Surat Keterangan Sekolah',
-            description: 'Surat keterangan untuk keperluan pendidikan',
-            requirements: ['KTP orang tua/wali', 'KK asli dan fotocopy', 'Akta kelahiran anak', 'Surat pengantar RT/RW', 'Formulir permohonan'],
-            processing_time: '2-3 hari',
-            fee: 0,
-            status: 'active',
-            category: 'pendidikan'
-          }
-        ]);
+        await fetchServices();
 
+        // Fetch all requests for operator dashboard
+        await fetchAllRequests();
 
         // Mock PPID services data - informasi publik yang lengkap
         setPpidServices([
@@ -788,11 +921,11 @@ const OperatorDashboard = () => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { 
-      id: 'users', 
-      label: 'Kelola Pengguna', 
-      icon: Users, 
-      badge: `${pendingUsers.length}`
+    {
+      id: 'users',
+      label: 'Kelola Pengguna',
+      icon: Users,
+      badge: pendingUsers.length
     },
     { id: 'population', label: 'Kelola Penduduk', icon: Building2 },
     { id: 'services', label: 'Kelola Layanan', icon: FileText },
@@ -1448,7 +1581,7 @@ const OperatorDashboard = () => {
 
   const handleRejectUser = async (userId: number) => {
     try {
-      const response = await apiFetch('/api/auth/reject-user', {
+      const response = await apiFetch('/auth/reject-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1468,7 +1601,7 @@ const OperatorDashboard = () => {
     setSubmitting(true);
 
     try {
-      const response = await apiFetch('/api/auth/create-dusun-head', {
+      const response = await apiFetch('/auth/create-dusun-head', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1506,7 +1639,7 @@ const OperatorDashboard = () => {
 
     try {
       // Create the dusun head account with rt_number as dusun identifier
-      const response = await apiFetch('/api/auth/create-dusun-head', {
+      const response = await apiFetch('/auth/create-dusun-head', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1539,7 +1672,7 @@ const OperatorDashboard = () => {
         alert(`Dusun "${newDusunForm.dusun_name}" berhasil dibuat!\n\nAkun Kepala Dusun:\nUsername: ${newDusunForm.head_username}\nPassword: ${newDusunForm.head_password}\n\nKepala dusun dapat login menggunakan kredensial ini.`);
         
         // Refresh dusun heads list
-        const dusunResponse = await apiFetch('/api/auth/users?role=dusun_head', {
+        const dusunResponse = await apiFetch('/auth/users?role=dusun_head', {
           credentials: 'include'
         });
         if (dusunResponse.ok) {
@@ -1558,46 +1691,94 @@ const OperatorDashboard = () => {
     }
   };
 
-  const handleSaveArticle = async (articleData: Article) => {
+  const handleSaveArticle = async (articleData: Article, imageFile: File | null) => {
     try {
-      // Generate slug from title
-      const slug = articleData.title.toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
+      setSubmitting(true);
+      const token = localStorage.getItem("auth_token");
 
-      const dataToSave = {
-        ...articleData,
-        slug: slug,
-        author_id: user?.id
-      };
+      const formData = new FormData();
+      formData.append('title', articleData.title);
+      formData.append('content', articleData.content);
+      formData.append('excerpt', articleData.excerpt);
+      formData.append('status', articleData.status);
+      formData.append('category', articleData.category); // FIX: Added category to form data
 
-      const url = selectedArticle ? `/api/articles/${selectedArticle.id}` : '/api/articles';
-      const method = selectedArticle ? 'PUT' : 'POST';
+      if (imageFile) {
+        formData.append('image', imageFile);
+      } else if (articleData.id && selectedArticle && selectedArticle.image_path && !articleData.image_path) {
+          // If it's an existing article, and it had an image, but now there's no new file
+          // and ArticleEditor cleared the image_path (meaning user removed it)
+          formData.append('clear_image', 'true'); // Explicitly tell backend to clear image
+      }
 
+
+      const isEdit = !!articleData.id;
+      const url = isEdit ? `/dashboard/articles/${articleData.id}` : '/dashboard/articles';
+      const method = 'POST'; // Always POST for FormData, use _method for PUT/PATCH
+
+      if (isEdit) {
+        formData.append('_method', 'PUT'); // Spoof PUT request for Laravel
+      }
+      
       const response = await apiFetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(dataToSave)
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // DO NOT set Content-Type for FormData, browser sets it automatically
+        },
+        body: formData,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (selectedArticle) {
-          setArticles(prev => prev.map(a => a.id === selectedArticle.id ? data.article : a));
-        } else {
-          setArticles(prev => [data.article, ...prev]);
-        }
-        
-        setSelectedArticle(null);
-        setEditorMode('list');
-        alert('Artikel berhasil disimpan!');
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to save article:', errorData);
+        alert(`Gagal menyimpan artikel: ${errorData.message || response.statusText}`);
+        return;
       }
+
+      await fetchArticles(); // Refresh the list of articles
+      
+      setSelectedArticle(null);
+      setEditorMode('list');
+      alert('Artikel berhasil disimpan!');
     } catch (error) {
       console.error('Failed to save article:', error);
-      throw error;
+      alert('Gagal menyimpan artikel');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteArticle = async (articleId: number) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus artikel ini?')) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const token = localStorage.getItem("auth_token");
+      const response = await apiFetch(`/dashboard/articles/${articleId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to delete article:', errorData);
+        alert(`Gagal menghapus artikel: ${errorData.message || response.statusText}`);
+        return;
+      }
+
+      await fetchArticles(); // Refresh the list of articles
+      alert('Artikel berhasil dihapus!');
+    } catch (error) {
+      console.error('Error deleting article:', error);
+      alert('Gagal menghapus artikel');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1725,47 +1906,92 @@ const OperatorDashboard = () => {
         }
       };
 
-   const handleSaveService = async (serviceData: Service) => {
-
+ const handleSaveService = async (serviceData: Service, templateFiles: Record<string, File>) => {
     try {
+        // setSubmitting(true);
+        
+        const isEdit = !!serviceData.id;
+        const url = isEdit ? `/services/${serviceData.id}` : `/services`;
+        // Laravel umumnya menggunakan POST untuk store dan PUT/PATCH/POST dengan _method=PUT untuk update
+        // Kita gunakan POST untuk Create, dan POST untuk Update (sesuai contoh gallery Anda, jika API Anda dikonfigurasi demikian)
+        const method = "POST"; 
 
-      // Simulasi save ke backend
+        const formData = new FormData();
+        
+        // 1. Append Data Layanan Utama (di-JSON-kan yang berbentuk array/object)
+        formData.append("name", serviceData.name);
+        formData.append("description", serviceData.description);
+        formData.append("processing_time", serviceData.processing_time);
+        formData.append("fee", serviceData.fee.toString());
+        formData.append("status", serviceData.status);
+        formData.append("category", serviceData.category);
+        
+        // Requirements dikirim sebagai JSON string (karena ini array)
+        formData.append("requirements", JSON.stringify(serviceData.requirements));
+        
+        // 2. Siapkan Data Template (Name dan ID/URL lama)
+        const templatesDataToSend: { id?: number; name: string; file_url?: string }[] = [];
+        serviceData.templates?.forEach(t => {
+            // Kita hanya kirim data nama dan ID lama (atau file_url lama)
+            // File object diabaikan di sini, karena akan diupload terpisah
+            templatesDataToSend.push({
+                id: t.id,
+                name: t.name,
+                // Jika ini adalah file lama, kirimkan file_url agar backend tahu mana yang tidak dihapus
+                file_url: t.file_object ? undefined : t.file_url,
+            });
+        });
+        
+        // Data template yang berupa teks/ID dikirim sebagai JSON string
+        formData.append("templates_data", JSON.stringify(templatesDataToSend));
 
-      // Untuk produksi, ganti dengan API call yang sebenarnya
 
-      const newService = {
+        // 3. Append File Upload Baru
+        for (const [key, file] of Object.entries(templateFiles)) {
+            // key adalah 'template_file_0', 'template_file_1', dst.
+            formData.append(key, file);
+        }
+        
+        // Jika update, Laravel perlu tahu methodnya adalah PUT (jika Anda tidak menggunakan POST untuk update)
+        if (isEdit && method === "POST") {
+            formData.append("_method", "PUT");
+        }
 
-        ...serviceData,
+        const token = localStorage.getItem("auth_token");
 
-        id: selectedService?.id || Date.now()
+        const response = await apiFetch(url, {
+            method,
+            body: formData,
+            // Penting: Jangan set Content-Type header secara manual untuk FormData. Browser akan mengaturnya.
+            headers: {
+                Authorization: `Bearer ${token}`,
+            }
+        });
 
-      };
+        if (!response.ok) {
+            const err = await response.json();
+            console.error('Validation Errors:', err.errors);
+            alert(`Gagal menyimpan layanan: ${err.message}`);
+            return;
+        }
 
-      if (selectedService) {
+        const savedService = await response.json();
 
-        setServices(prev => prev.map(s => s.id === selectedService.id ? newService : s));
+        // Refresh data layanan dari database
+        await fetchServices();
 
-      } else {
+        setSelectedService(null);
+        setServiceEditorMode("list");
 
-        setServices(prev => [newService, ...prev]);
+        alert(`Layanan "${savedService.name}" berhasil disimpan!`);
 
-      }
-
-      setSelectedService(null);
-
-      setServiceEditorMode('list');
-
-      alert('Layanan berhasil disimpan!');
-
-    } catch (error) {
-
-      console.error('Failed to save service:', error);
-
-      throw error;
-
+    } catch (e) {
+        console.error(e);
+        alert("Terjadi kesalahan saat menyimpan layanan.");
+    } finally {
+        // setSubmitting(false);
     }
-
-  };
+};
 
 
   const handleSavePPID = async (ppidData: PPIDService) => {
@@ -3229,20 +3455,6 @@ const OperatorDashboard = () => {
         {/* Content based on active subtab */}
         {servicesSubTab === 'administration' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xl font-semibold text-gray-900">Layanan Administrasi</h3>
-              <button 
-                onClick={() => {
-                  setSelectedService(null);
-                  setServiceEditorMode('editor');
-                }}
-                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Layanan</span>
-              </button>
-            </div>
-
             {/* Statistics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
@@ -3253,87 +3465,308 @@ const OperatorDashboard = () => {
                 <div className="text-2xl font-bold text-emerald-600">{services.filter(s => s.status === 'active').length}</div>
                 <div className="text-sm text-gray-700">Aktif</div>
               </div>
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-                <div className="text-2xl font-bold text-emerald-600">{services.filter(s => s.fee === 0).length}</div>
-                <div className="text-sm text-gray-700">Gratis</div>
-              </div>
               <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-4 border border-amber-200">
-                <div className="text-2xl font-bold text-amber-600">{services.filter(s => s.category === 'administrasi').length}</div>
-                <div className="text-sm text-gray-700">Administrasi</div>
+                <div className="text-2xl font-bold text-amber-600">{allRequests.length}</div>
+                <div className="text-sm text-gray-700">Total Pengajuan</div>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 border border-yellow-200">
+                <div className="text-2xl font-bold text-yellow-600">{allRequests.filter(r => r.status === 'pending').length}</div>
+                <div className="text-sm text-gray-700">Pending</div>
               </div>
             </div>
 
-            {/* Services Grid */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              {services.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 text-lg">Belum ada layanan</p>
-                  <p className="text-gray-400 text-sm mt-2">Klik tombol "Tambah Layanan" untuk membuat layanan baru</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {services?.filter(item => item && item.id).map((service) => (
-                    <div key={service.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-lg transition-all duration-200 hover:border-blue-300">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 mb-2 text-lg">{service.name}</h4>
-                          <p className="text-sm text-gray-600 mb-3 line-clamp-2">{service.description}</p>
-                          <div className="flex flex-wrap items-center gap-2 mb-3">
-                            <span className={`px-3 py-1 text-xs font-medium rounded-full ${getStatusColor(service.status)}`}>
-                              {getStatusLabel(service.status)}
-                            </span>
-                            <span className="px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded-full font-medium">
-                              {service.category}
-                            </span>
-                          </div>
+            {/* 2 Column Layout: Services List (Left) & Requests List (Right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* LEFT COLUMN - Services List */}
+              <div className="lg:col-span-1">
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+                  {/* Header Card */}
+                  <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-white">Daftar Layanan</h3>
+                          <p className="text-xs text-blue-100">{services.length} layanan tersedia</p>
                         </div>
                       </div>
-                      
-                      <div className="space-y-2 text-sm mb-4">
-                        <div className="flex items-start">
-                          <span className="font-semibold text-gray-700 min-w-[80px]">Syarat:</span>
-                          <span className="text-gray-600">{service.requirements.join(', ')}</span>
+                      <button
+                        onClick={() => {
+                          setSelectedService(null);
+                          setServiceEditorMode('editor');
+                        }}
+                        className="flex items-center space-x-1 px-3 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 transition-all duration-200 shadow-md hover:shadow-lg text-sm font-semibold"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Tambah</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Services List */}
+                  <div className="p-4">
+                    <div className="bg-white rounded-xl p-4 max-h-[650px] overflow-y-auto">
+                      {servicesLoading ? (
+                        <div className="space-y-2">
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i} className="border-2 border-gray-200 rounded-lg p-3 animate-pulse">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-5 bg-gray-200 rounded-full w-16"></div>
+                                    <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                  </div>
+                                </div>
+                                <div className="w-4 h-4 bg-gray-200 rounded"></div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="flex items-center">
-                          <Clock className="w-4 h-4 text-gray-500 mr-2" />
-                          <span className="text-gray-600">{service.processing_time}</span>
+                      ) : services.length === 0 ? (
+                        <div className="text-center py-12">
+                          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-500 text-sm">Belum ada layanan</p>
                         </div>
-                        <div className="flex items-center">
-                          <DollarSign className="w-4 h-4 text-gray-500 mr-2" />
-                          <span className="text-gray-600 font-medium">
-                            {service.fee === 0 ? 'Gratis' : `Rp ${service.fee.toLocaleString('id-ID')}`}
-                          </span>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            {services
+                              ?.slice((servicesPage - 1) * ITEMS_PER_PAGE_SERVICES, servicesPage * ITEMS_PER_PAGE_SERVICES)
+                              .map((service) => (
+                                <div
+                                  key={service.id}
+                                  onClick={() => {
+                                    setServiceDetailModalData(service);
+                                    setShowServiceDetailModal(true);
+                                  }}
+                                  className="group border-2 border-gray-200 rounded-lg p-3 hover:shadow-lg hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 cursor-pointer"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <h4 className="font-semibold text-gray-900 text-sm mb-1 group-hover:text-blue-600 transition-colors">{service.name}</h4>
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(service.status)}`}>
+                                          {getStatusLabel(service.status)}
+                                        </span>
+                                        <span className="text-xs text-gray-500 font-medium">
+                                          {service.fee === 0 ? 'Gratis' : `Rp ${service.fee.toLocaleString('id-ID')}`}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <Eye className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors" />
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+
+                          {services.length > ITEMS_PER_PAGE_SERVICES && (
+                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
+                              <button
+                                onClick={() => setServicesPage(p => Math.max(1, p - 1))}
+                                disabled={servicesPage === 1}
+                                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                                Prev
+                              </button>
+                              <span className="text-sm text-gray-600">
+                                {servicesPage}/{Math.ceil(services.length / ITEMS_PER_PAGE_SERVICES)}
+                              </span>
+                              <button
+                                onClick={() => setServicesPage(p => Math.min(Math.ceil(services.length / ITEMS_PER_PAGE_SERVICES), p + 1))}
+                                disabled={servicesPage >= Math.ceil(services.length / ITEMS_PER_PAGE_SERVICES)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Next
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN - Requests List */}
+              <div className="lg:col-span-2">
+                <div className="bg-white rounded-2xl shadow-lg border-2 border-gray-200 overflow-hidden">
+                  {/* Header Card */}
+                  <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                          <MessageSquare className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-white">Pengajuan Masuk</h3>
+                          <p className="text-xs text-emerald-100">
+                            {allRequests.length} total pengajuan • {allRequests.filter(r => r.status === 'pending').length} menunggu
+                          </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center space-x-2 pt-3 border-t border-gray-200">
-                        <button 
-                          onClick={() => {
-                            setSelectedService(service);
-                            setServiceEditorMode('editor');
-                          }}
-                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-all"
+                      {/* Search and Filter */}
+                      <div className="flex gap-2">
+                        <div className="relative flex-1 md:w-56">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Cari pengajuan..."
+                            value={requestSearchQuery}
+                            onChange={(e) => setRequestSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border-2 border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-300"
+                          />
+                        </div>
+                        <select
+                          value={requestFilterService}
+                          onChange={(e) => setRequestFilterService(e.target.value)}
+                          className="px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 font-medium"
                         >
-                          <Edit3 className="w-4 h-4" />
-                          <span className="text-sm font-medium">Edit</span>
-                        </button>
-                        <button 
-                          onClick={() => {
-                            if (confirm('Apakah Anda yakin ingin menghapus layanan ini?')) {
-                              setServices(prev => prev.filter(s => s.id !== service.id));
-                            }
-                          }}
-                          className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span className="text-sm font-medium">Hapus</span>
-                        </button>
+                          <option value="all">Semua Layanan</option>
+                          {services.map(service => (
+                            <option key={service.id} value={service.id}>{service.name}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Requests List */}
+                  <div className="p-4">
+                    <div className="bg-white rounded-xl p-4 max-h-[650px] overflow-y-auto">
+                      {requestsLoading ? (
+                        <div className="space-y-3">
+                          {[...Array(8)].map((_, i) => (
+                            <div key={i} className="border-2 border-gray-200 rounded-lg p-4 animate-pulse">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                                    <div className="h-5 bg-gray-200 rounded-full w-16"></div>
+                                  </div>
+                                  <div className="h-3 bg-gray-200 rounded w-full mb-1"></div>
+                                  <div className="h-3 bg-gray-200 rounded w-3/4 mb-3"></div>
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                    <div className="h-3 bg-gray-200 rounded w-24"></div>
+                                    <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                  </div>
+                                </div>
+                                <div className="w-5 h-5 bg-gray-200 rounded"></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (() => {
+                        const filteredRequests = allRequests.filter(req => {
+                          const matchSearch = requestSearchQuery === '' ||
+                            req.subject.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+                            req.description.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+                            req.user?.full_name?.toLowerCase().includes(requestSearchQuery.toLowerCase());
+                          const matchFilter = requestFilterService === 'all' || req.service_id.toString() === requestFilterService;
+                          return matchSearch && matchFilter;
+                        });
+
+                        const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE_REQUESTS);
+                        const paginatedRequests = filteredRequests.slice(
+                          (requestsPage - 1) * ITEMS_PER_PAGE_REQUESTS,
+                          requestsPage * ITEMS_PER_PAGE_REQUESTS
+                        );
+
+                        return filteredRequests.length === 0 ? (
+                          <div className="text-center py-16">
+                            <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500 text-sm font-medium">
+                              {allRequests.length === 0 ? 'Belum ada pengajuan masuk' : 'Tidak ada pengajuan yang sesuai filter'}
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="space-y-3">
+                              {paginatedRequests.map((request) => (
+                                <div
+                                  key={request.id}
+                                  onClick={async () => {
+                                    setRequestDetailModalData(request);
+                                    setShowRequestDetailModal(true);
+                                    setResponseText('');
+                                    setApprovalFile(null);
+                                    if (request.status === 'pending') {
+                                      try {
+                                        const token = localStorage.getItem('auth_token');
+                                        await apiFetch(`/requests/${request.id}/status`, {
+                                          method: 'PUT',
+                                          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                        });
+                                        setAllRequests(prev => prev.map(req => req.id === request.id ? { ...req, status: 'in_progress' } : req));
+                                        setRequestDetailModalData(prev => prev ? { ...prev, status: 'in_progress' } : null);
+                                      } catch (error) { console.error('Error updating status:', error); }
+                                    }
+                                  }}
+                                  className="group border-2 border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-emerald-400 hover:bg-emerald-50 transition-all duration-200 cursor-pointer"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <h4 className="font-semibold text-gray-900 text-sm group-hover:text-emerald-600 transition-colors">{request.subject}</h4>
+                                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${getStatusColor(request.status)}`}>
+                                          {getStatusLabel(request.status)}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-gray-600 line-clamp-2 mb-3">{request.description}</p>
+                                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                                        <span className="flex items-center gap-1 font-medium"><User className="w-3 h-3" />{request.user?.full_name || 'Unknown'}</span>
+                                        <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{request.service?.name || request.request_type}</span>
+                                        <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(request.created_at).toLocaleDateString('id-ID')}</span>
+                                      </div>
+                                    </div>
+                                    <Eye className="w-5 h-5 text-gray-400 group-hover:text-emerald-600 transition-colors flex-shrink-0" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {filteredRequests.length > ITEMS_PER_PAGE_REQUESTS && (
+                              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-200">
+                                <button
+                                  onClick={() => setRequestsPage(p => Math.max(1, p - 1))}
+                                  disabled={requestsPage === 1}
+                                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 w-full sm:w-auto justify-center"
+                                >
+                                  <ChevronLeft className="w-4 h-4" /> Prev
+                                </button>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-gray-600">Halaman</span>
+                                  <select
+                                    value={requestsPage}
+                                    onChange={(e) => setRequestsPage(Number(e.target.value))}
+                                    className="px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                                  >
+                                    {[...Array(totalPages)].map((_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
+                                  </select>
+                                  <span className="text-sm text-gray-600">dari {totalPages}</span>
+                                </div>
+                                <button
+                                  onClick={() => setRequestsPage(p => Math.min(totalPages, p + 1))}
+                                  disabled={requestsPage >= totalPages}
+                                  className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 w-full sm:w-auto justify-center"
+                                >
+                                  Next <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}
@@ -3741,7 +4174,7 @@ const OperatorDashboard = () => {
                             <Edit3 className="w-5 h-5" />
                           </button>
                           <button 
-                            onClick={() => alert('Fungsi hapus akan segera diimplementasikan')}
+                            onClick={() => handleDeleteArticle(article.id!)}
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
                             title="Hapus"
                           >
@@ -3792,7 +4225,34 @@ const OperatorDashboard = () => {
             {/* Agenda List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="space-y-4">
-                {agendaItems.length === 0 ? (
+                {agendaLoading ? (
+                  // Loading Skeleton
+                  [...Array(3)].map((_, i) => (
+                    <div key={i} className="border border-gray-200 rounded-xl p-4 animate-pulse">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-start space-x-3">
+                            <div className="flex-shrink-0 w-12 h-12 bg-gray-200 rounded-lg"></div>
+                            <div className="flex-1">
+                              <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+                              <div className="h-4 bg-gray-200 rounded w-full mb-1"></div>
+                              <div className="h-4 bg-gray-200 rounded w-2/3 mb-3"></div>
+                              <div className="flex gap-3">
+                                <div className="h-3 bg-gray-200 rounded w-20"></div>
+                                <div className="h-3 bg-gray-200 rounded w-24"></div>
+                                <div className="h-5 bg-gray-200 rounded-full w-16"></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                          <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : agendaItems.length === 0 ? (
                   <div className="text-center py-12">
                     <CalendarDays className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500 text-lg">Belum ada agenda</p>
@@ -3842,13 +4302,31 @@ const OperatorDashboard = () => {
                           >
                             <Edit3 className="w-5 h-5" />
                           </button>
-                          <button 
-                            onClick={() => {
+                          <button
+                            onClick={async () => {
                               if (confirm('Apakah Anda yakin ingin menghapus agenda ini?')) {
-                                setAgendaItems(prev => prev.filter(a => a.id !== agenda.id));
+                                try {
+                                  const token = localStorage.getItem('auth_token');
+                                  const response = await apiFetch(`/agenda/${agenda.id}`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`,
+                                    },
+                                  });
+
+                                  if (response.ok) {
+                                    setAgendaItems(prev => prev.filter(a => a.id !== agenda.id));
+                                    alert('Agenda berhasil dihapus!');
+                                  } else {
+                                    alert('Gagal menghapus agenda. Silakan coba lagi.');
+                                  }
+                                } catch (error) {
+                                  console.error('Error deleting agenda:', error);
+                                  alert('Terjadi kesalahan saat menghapus agenda.');
+                                }
                               }
                             }}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                             title="Hapus"
                           >
                             <Trash2 className="w-5 h-5" />
@@ -3907,7 +4385,35 @@ const OperatorDashboard = () => {
 
     {/* Gallery List */}
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-      {!galleryItems || galleryItems.length === 0 ? (
+      {galleryLoading ? (
+        // Loading Skeleton
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="border border-gray-200 rounded-xl p-4 animate-pulse">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                <div className="flex gap-4 flex-1">
+                  <div className="flex-shrink-0 w-32 h-24 bg-gray-200 rounded-lg"></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="h-5 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-4 bg-gray-200 rounded w-full mb-1"></div>
+                    <div className="h-4 bg-gray-200 rounded w-2/3 mb-3"></div>
+                    <div className="flex gap-2">
+                      <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+                      <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+                      <div className="h-4 bg-gray-200 rounded w-24"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                  <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                  <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : !galleryItems || galleryItems.length === 0 ? (
         <div className="text-center py-12">
           <Image className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-500 text-lg">Belum ada foto</p>
@@ -3990,13 +4496,31 @@ const OperatorDashboard = () => {
                           >
                             <Edit3 className="w-5 h-5" />
                           </button>
-                          <button 
-                            onClick={() => {
+                          <button
+                            onClick={async () => {
                               if (confirm('Apakah Anda yakin ingin menghapus foto ini?')) {
-                                setGalleryItems(prev => prev.filter(g => g.id !== item.id));
+                                try {
+                                  const token = localStorage.getItem('auth_token');
+                                  const response = await apiFetch(`/gallery/${item.id}`, {
+                                    method: 'DELETE',
+                                    headers: {
+                                      'Authorization': `Bearer ${token}`,
+                                    },
+                                  });
+
+                                  if (response.ok) {
+                                    setGalleryItems(prev => prev.filter(g => g.id !== item.id));
+                                    alert('Foto berhasil dihapus!');
+                                  } else {
+                                    alert('Gagal menghapus foto. Silakan coba lagi.');
+                                  }
+                                } catch (error) {
+                                  console.error('Error deleting gallery:', error);
+                                  alert('Terjadi kesalahan saat menghapus foto.');
+                                }
                               }
                             }}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" 
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                             title="Hapus"
                           >
                             <Trash2 className="w-5 h-5" />
@@ -4491,6 +5015,452 @@ const OperatorDashboard = () => {
       </div>
     </div>
   );
+
+  // Modal: Service Detail
+  const renderServiceDetailModal = () => {
+    if (!showServiceDetailModal || !serviceDetailModalData) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowServiceDetailModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          {/* Modal Header */}
+          <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">{serviceDetailModalData.name}</h3>
+                  <p className="text-blue-100 text-sm">Detail Layanan Administrasi</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowServiceDetailModal(false)}
+                className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Modal Content */}
+          <div className="p-6 space-y-6">
+            {/* Status and Category */}
+            <div className="flex items-center gap-3">
+              <span className={`px-4 py-2 text-sm font-medium rounded-full ${getStatusColor(serviceDetailModalData.status)}`}>
+                {getStatusLabel(serviceDetailModalData.status)}
+              </span>
+              <span className="px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-full font-medium">
+                {serviceDetailModalData.category}
+              </span>
+            </div>
+
+            {/* Description */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Deskripsi:</h4>
+              <p className="text-gray-600">{serviceDetailModalData.description}</p>
+            </div>
+
+            {/* Requirements */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Persyaratan:</h4>
+              <ul className="list-disc list-inside space-y-1">
+                {serviceDetailModalData.requirements.map((req, idx) => (
+                  <li key={idx} className="text-gray-600 text-sm">{req}</li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Processing Time & Fee */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  <span className="text-sm font-semibold text-gray-700">Waktu Proses</span>
+                </div>
+                <p className="text-gray-900 font-medium">{serviceDetailModalData.processing_time}</p>
+              </div>
+              <div className="bg-emerald-50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  <span className="text-sm font-semibold text-gray-700">Biaya</span>
+                </div>
+                <p className="text-gray-900 font-medium">
+                  {serviceDetailModalData.fee === 0 ? 'Gratis' : `Rp ${serviceDetailModalData.fee.toLocaleString('id-ID')}`}
+                </p>
+              </div>
+            </div>
+
+            {/* Templates */}
+            {serviceDetailModalData.templates && serviceDetailModalData.templates.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Template Dokumen:</h4>
+                <div className="space-y-2">
+                  {serviceDetailModalData.templates.map((template) => (
+                    <a
+                      key={template.id}
+                      href={template.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                        <span className="font-medium text-gray-900 text-sm">{template.name}</span>
+                      </div>
+                      <Download className="w-4 h-4 text-blue-600" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          <div className="sticky bottom-0 bg-gray-50 p-6 rounded-b-2xl border-t border-gray-200 flex gap-3">
+            <button
+              onClick={() => {
+                setShowServiceDetailModal(false);
+                setSelectedService(serviceDetailModalData);
+                setServiceEditorMode('editor');
+              }}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg"
+            >
+              <Edit3 className="w-5 h-5" />
+              Edit Layanan
+            </button>
+            <button
+              onClick={async () => {
+                if (!confirm('Apakah Anda yakin ingin menghapus layanan ini?')) return;
+
+                try {
+                  const token = localStorage.getItem('auth_token');
+                  const response = await apiFetch(`/services/${serviceDetailModalData.id}`, {
+                    method: 'DELETE',
+                    headers: {
+                      Authorization: `Bearer ${token}`,
+                      Accept: 'application/json',
+                    },
+                  });
+
+                  if (response.ok) {
+                    setServices(prev => prev.filter(s => s.id !== serviceDetailModalData.id));
+                    setShowServiceDetailModal(false);
+                    alert('Layanan berhasil dihapus!');
+                  } else {
+                    alert('Gagal menghapus layanan');
+                  }
+                } catch (error) {
+                  console.error('Error deleting service:', error);
+                  alert('Terjadi kesalahan saat menghapus layanan');
+                }
+              }}
+              className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg"
+            >
+              <Trash2 className="w-5 h-5" />
+              Hapus Layanan
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Modal: Request Detail
+  const renderRequestDetailModal = () => {
+    if (!showRequestDetailModal || !requestDetailModalData) return null;
+
+    const handleApprove = async () => {
+      if (!approvalFile) {
+        alert('Mohon upload file hasil layanan sebelum menyetujui pengajuan');
+        return;
+      }
+
+      if (!responseText.trim()) {
+        alert('Mohon isi catatan sebelum menyetujui pengajuan');
+        return;
+      }
+
+      setSubmittingApproval(true);
+
+      try {
+        const formData = new FormData();
+        formData.append('response', responseText.trim());
+        formData.append('output_file', approvalFile);
+
+        const token = localStorage.getItem('auth_token');
+
+        const response = await apiFetch(`/requests/${requestDetailModalData.id}/approve`, {
+          method: 'POST',
+          body: formData,
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          await response.json();
+
+          // Update local state
+          setAllRequests(prev => prev.map(req =>
+            req.id === requestDetailModalData.id
+              ? { ...req, status: 'approved', response: responseText.trim() }
+              : req
+          ));
+
+          setShowRequestDetailModal(false);
+          setApprovalFile(null);
+          setResponseText('');
+          alert('Pengajuan berhasil disetujui!');
+        } else {
+          alert('Gagal menyetujui pengajuan');
+        }
+
+      } catch (error) {
+        console.error('Error approving request:', error);
+        alert('Terjadi kesalahan saat menyetujui pengajuan');
+      } finally {
+        setSubmittingApproval(false);
+      }
+    };
+
+    const handleReject = async () => {
+      if (!responseText.trim()) {
+        alert('Mohon isi catatan/alasan penolakan sebelum menolak pengajuan');
+        return;
+      }
+
+      if (!confirm('Apakah Anda yakin ingin menolak pengajuan ini?')) {
+        return;
+      }
+
+      setSubmittingApproval(true);
+
+      try {
+        const token = localStorage.getItem('auth_token');
+
+        const response = await apiFetch(`/requests/${requestDetailModalData.id}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({
+            response: responseText.trim(),
+          }),
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          // Update local state
+          setAllRequests(prev => prev.map(req =>
+            req.id === requestDetailModalData.id
+              ? { ...req, status: 'rejected', response: responseText.trim() }
+              : req
+          ));
+
+          setShowRequestDetailModal(false);
+          setResponseText('');
+          alert('Pengajuan berhasil ditolak!');
+        } else {
+          alert('Gagal menolak pengajuan');
+        }
+
+      } catch (error) {
+        console.error('Error rejecting request:', error);
+        alert('Terjadi kesalahan saat menolak pengajuan');
+      } finally {
+        setSubmittingApproval(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowRequestDetailModal(false)}>
+        <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          {/* Modal Header */}
+          <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white p-6 rounded-t-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold">{requestDetailModalData.subject}</h3>
+                  <p className="text-emerald-100 text-sm">Detail Pengajuan Layanan</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRequestDetailModal(false)}
+                className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Modal Content */}
+          <div className="p-6 space-y-6">
+            {/* Status */}
+            <div className="flex items-center gap-3">
+              <span className={`px-4 py-2 text-sm font-medium rounded-full ${getStatusColor(requestDetailModalData.status)}`}>
+                {getStatusLabel(requestDetailModalData.status)}
+              </span>
+            </div>
+
+            {/* User Info */}
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <User className="w-5 h-5 text-blue-600" />
+                Informasi Pemohon
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-600">Nama Lengkap</p>
+                  <p className="font-medium text-gray-900">{requestDetailModalData.user?.full_name || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Jenis Layanan</p>
+                  <p className="font-medium text-gray-900">{requestDetailModalData.service?.name || requestDetailModalData.request_type}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Tanggal Pengajuan</p>
+                  <p className="font-medium text-gray-900">{new Date(requestDetailModalData.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600">Terakhir Diupdate</p>
+                  <p className="font-medium text-gray-900">{new Date(requestDetailModalData.updated_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Keperluan:</h4>
+              <p className="text-gray-600 bg-gray-50 p-4 rounded-lg">{requestDetailModalData.description}</p>
+            </div>
+
+            {/* Documents */}
+            {requestDetailModalData.documents && requestDetailModalData.documents.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Dokumen Persyaratan ({requestDetailModalData.documents.length}):</h4>
+                <div className="space-y-2">
+                  {requestDetailModalData.documents.map((doc: any, idx: number) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <FileText className="w-5 h-5 text-blue-600" />
+                        <div>
+                          <p className="font-medium text-gray-900 text-sm">{doc.required_name || 'Dokumen'}</p>
+                          <p className="text-xs text-gray-500">{doc.original_name}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const token = localStorage.getItem('auth_token');
+                          const url = `${import.meta.env.VITE_API_BASE_URL}/requests/document/${doc.id}/download?token=${encodeURIComponent(token || '')}`;
+                          console.log('Download document URL:', url);
+                          window.open(url, '_blank');
+                        }}
+                        className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-medium transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Unduh
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Catatan (Only if pending or in_progress) */}
+            {(requestDetailModalData.status === 'pending' || requestDetailModalData.status === 'in_progress') && (
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-blue-900 mb-3">
+                  Catatan *
+                </h4>
+                <p className="text-xs text-blue-700 mb-3">
+                  Catatan wajib diisi sebelum menyetujui atau menolak pengajuan
+                </p>
+                <textarea
+                  value={responseText}
+                  onChange={(e) => setResponseText(e.target.value)}
+                  placeholder="Masukkan catatan untuk pemohon (misal: dokumen telah diproses, silakan ambil di kantor desa, atau alasan penolakan)"
+                  className="w-full p-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  rows={4}
+                />
+              </div>
+            )}
+
+            {/* Upload Result File (Only if pending or in_progress) */}
+            {(requestDetailModalData.status === 'pending' || requestDetailModalData.status === 'in_progress') && (
+              <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-emerald-900 mb-3 flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Upload File Hasil Layanan (PDF/Word) *
+                </h4>
+                <p className="text-xs text-emerald-700 mb-3">
+                  File ini akan diberikan kepada pemohon setelah pengajuan disetujui
+                </p>
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files ? e.target.files[0] : null;
+                    setApprovalFile(file);
+                  }}
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200"
+                  accept=".pdf,.doc,.docx"
+                />
+                {approvalFile && (
+                  <div className="flex justify-between items-center mt-3 text-xs text-emerald-600 bg-white p-3 rounded-lg border border-emerald-200">
+                    <p className="flex items-center gap-1 font-medium">
+                      <CheckCircle className="w-4 h-4" />
+                      {approvalFile.name}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setApprovalFile(null)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Response (if rejected or approved with response) */}
+            {requestDetailModalData.response && (
+              <div className={`p-4 rounded-lg ${requestDetailModalData.status === 'rejected' ? 'bg-red-50 border-l-4 border-red-500' : 'bg-emerald-50 border-l-4 border-emerald-500'}`}>
+                <h4 className="text-sm font-semibold mb-2">{requestDetailModalData.status === 'rejected' ? 'Alasan Penolakan:' : 'Catatan:'}</h4>
+                <p className="text-sm">{requestDetailModalData.response}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          {(requestDetailModalData.status === 'pending' || requestDetailModalData.status === 'in_progress') && (
+            <div className="sticky bottom-0 bg-gray-50 p-6 rounded-b-2xl border-t border-gray-200 flex gap-3">
+              <button
+                onClick={handleReject}
+                disabled={submittingApproval}
+                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <XCircle className="w-5 h-5" />
+                {submittingApproval ? 'Memproses...' : 'Tolak'}
+              </button>
+              <button
+                onClick={handleApprove}
+                disabled={submittingApproval || !approvalFile}
+                className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckCircle className="w-5 h-5" />
+                {submittingApproval ? 'Memproses...' : 'Setujui'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const renderContent = () => {
     switch (activeTab) {
@@ -5603,6 +6573,12 @@ const OperatorDashboard = () => {
 
       {/* Delete User Confirmation Modal */}
       {renderDeleteUserModal()}
+
+      {/* Service Detail Modal */}
+      {renderServiceDetailModal()}
+
+      {/* Request Detail Modal */}
+      {renderRequestDetailModal()}
 
       {/* Create Dusun Head Modal */}
       {showCreateDusunHead && (

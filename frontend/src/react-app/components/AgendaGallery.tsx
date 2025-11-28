@@ -1,24 +1,130 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Calendar, MapPin, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
-import { galleryItems } from '@/data/gallery';
-import { mockAgendaItems } from '@/react-app/data/mockInformationData';
+// Hapus import galleryItems dan mockAgendaItems
+// import { galleryItems } from '@/data/gallery';
+// import { mockAgendaItems } from '@/react-app/data/mockInformationData';
+
+// Import apiFetch dari lokasi yang sudah Anda tentukan
+import { apiFetch } from '@/react-app/lib/api'; 
+
+// Tentukan tipe data untuk konsistensi
+interface AgendaItem {
+  id: number;
+  date: string; // ISO date string
+  time: string; // e.g. "09:00"
+  location: string;
+  title: string;
+  category: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+}
+
+interface GalleryItem {
+  id: number;
+  title: string;
+  src: string; // image URL
+  category: string;
+}
+
+const FALLBACK_IMAGE = "/images/fallback-gallery.jpg"; // Path gambar fallback
 
 const AgendaGallery = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  
+  // State untuk data real
+  const [upcomingAgendas, setUpcomingAgendas] = useState<AgendaItem[]>([]);
+  const [gallerySlides, setGallerySlides] = useState<GalleryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Filter only upcoming/scheduled agendas and sort by date
-  const upcomingAgendas = mockAgendaItems
-    .filter(item => item.status === 'scheduled')
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .slice(0, 3); // Show only 3 upcoming events
+  // Fungsi utilitas
+  const formatTime = (timeString: string) => {
+    return `${timeString} WIB`;
+  };
+  
+  const getDay = (dateString: string) => new Date(dateString).getDate();
+  const getMonthShort = (dateString: string) => new Date(dateString).toLocaleDateString('id-ID', { month: 'short' });
 
-  // Take first 10 gallery items for slideshow
-  const gallerySlides = galleryItems.slice(0, 10);
+  // --- LOGIC FETCH DATA ---
+
+  const fetchAgenda = useCallback(async () => {
+    try {
+      const res = await apiFetch("/agenda", { credentials: "include" });
+
+      if (!res.ok) throw new Error("Gagal mengambil data agenda.");
+
+      const data = await res.json();
+      const items: any[] = Array.isArray(data.agendas) ? data.agendas : [];
+
+      // Filter, map, dan sort di sini
+      const mappedAgendas: AgendaItem[] = items
+        .filter((item: any) => item.status === 'scheduled') // Filter yang berstatus 'scheduled'
+        .map((item: any) => ({
+          id: item.id,
+          date: item.date, // Gunakan ISO date string untuk sorting
+          time: item.time,
+          location: item.location,
+          title: item.title,
+          category: item.category,
+          status: item.status,
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(0, 3); // Ambil hanya 3 event mendatang
+
+      setUpcomingAgendas(mappedAgendas);
+      setError('');
+    } catch (err: any) {
+      console.error("Error fetching agenda:", err);
+      setError('Gagal memuat agenda: ' + (err.message || 'Server error.'));
+      setUpcomingAgendas([]);
+    }
+  }, []);
+
+  const fetchGallery = useCallback(async () => {
+    try {
+      const galleryResponse = await apiFetch("/gallery", { credentials: "include" });
+
+      if (!galleryResponse.ok) {
+        throw new Error("Gagal mengambil data galeri.");
+      }
+
+      const data = await galleryResponse.json();
+      const items = Array.isArray(data.galleries) ? data.galleries : [];
+
+      const normalized: GalleryItem[] = items
+        .filter((item: any) => item.status === 'published') // Filter yang berstatus 'published' (jika ada field status)
+        .map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          category: item.category,
+          src: item.image_url || FALLBACK_IMAGE, // Gunakan image_url atau fallback
+        }))
+        .slice(0, 10); // Ambil 10 slide pertama
+
+      setGallerySlides(normalized);
+    } catch (err: any) {
+      console.error("Error fetching galleries:", err);
+      // Cukup log error galeri, tidak perlu overwrite error agenda
+      setGallerySlides([]);
+    }
+  }, []);
+  
+  // Kombinasikan fetch di useEffect
+  useEffect(() => {
+    setIsLoading(true);
+    // Jalankan kedua fetch, gunakan Promise.all untuk menunggu keduanya
+    Promise.all([fetchAgenda(), fetchGallery()])
+        .finally(() => {
+            setIsLoading(false);
+        });
+  }, [fetchAgenda, fetchGallery]);
+
+  // --- LOGIC SLIDESHOW ---
 
   // Auto-play slideshow
   useEffect(() => {
-    if (!isAutoPlaying) return;
+    // Pastikan ada slide dan tidak dalam loading
+    if (!isAutoPlaying || gallerySlides.length === 0) return; 
     
     const interval = setInterval(() => {
       setCurrentSlide(prev => (prev + 1) % gallerySlides.length);
@@ -28,24 +134,47 @@ const AgendaGallery = () => {
   }, [isAutoPlaying, gallerySlides.length]);
 
   const nextSlide = () => {
+    if (gallerySlides.length === 0) return;
     setCurrentSlide((prev) => (prev + 1) % gallerySlides.length);
     setIsAutoPlaying(false);
   };
 
   const prevSlide = () => {
+    if (gallerySlides.length === 0) return;
     setCurrentSlide((prev) => (prev - 1 + gallerySlides.length) % gallerySlides.length);
     setIsAutoPlaying(false);
   };
 
   const goToSlide = (index: number) => {
+    if (gallerySlides.length === 0) return;
     setCurrentSlide(index);
     setIsAutoPlaying(false);
   };
+  
+  // Tampilkan loading state
+  if (isLoading) {
+    return (
+        <div className="py-16 bg-gradient-to-br from-gray-50 via-white to-emerald-50">
+            <div className="container mx-auto px-4 text-center">
+                <p className="text-xl font-semibold text-emerald-600">Memuat Agenda & Galeri...</p>
+                {/* Tambahkan spinner/skeleton loading di sini jika diperlukan */}
+            </div>
+        </div>
+    )
+  }
+  
+  // Tampilkan error state (jika ada error yang terjadi)
+  if (error && upcomingAgendas.length === 0) {
+      return (
+          <div className="py-16 bg-gradient-to-br from-gray-50 via-white to-emerald-50">
+              <div className="container mx-auto px-4 text-center">
+                  <p className="text-red-500 font-medium">⚠️ {error}</p>
+              </div>
+          </div>
+      )
+  }
 
-  const formatTime = (timeString: string) => {
-    return `${timeString} WIB`;
-  };
-
+  // Render komponen utama
   return (
     <div className="py-16 bg-gradient-to-br from-gray-50 via-white to-emerald-50">
       <div className="container mx-auto px-4">
@@ -72,17 +201,18 @@ const AgendaGallery = () => {
               {upcomingAgendas.length > 0 ? (
                 upcomingAgendas.map((agenda) => (
                   <div
-                    key={agenda.id}
+                    // Pastikan key unik, jika item API tidak memiliki 'id', gunakan index (kurang disarankan)
+                    key={agenda.id} 
                     className="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-5 border border-gray-100 hover:border-emerald-300 group"
                   >
                     <div className="flex items-start space-x-4">
                       {/* Date Badge */}
                       <div className="flex-shrink-0 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-lg p-3 text-center min-w-[70px] shadow-lg">
                         <div className="text-2xl font-bold">
-                          {new Date(agenda.date).getDate()}
+                          {getDay(agenda.date)}
                         </div>
                         <div className="text-xs uppercase">
-                          {new Date(agenda.date).toLocaleDateString('id-ID', { month: 'short' })}
+                          {getMonthShort(agenda.date)}
                         </div>
                       </div>
 
@@ -149,82 +279,89 @@ const AgendaGallery = () => {
 
             {/* Slideshow Container */}
             <div className="relative bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-              {/* Main Slide */}
-              <div className="relative aspect-[4/3] overflow-hidden">
-                {gallerySlides.map((slide, index) => (
-                  <div
-                    key={slide.id}
-                    className={`absolute inset-0 transition-all duration-700 ${
-                      index === currentSlide
-                        ? 'opacity-100 scale-100'
-                        : 'opacity-0 scale-105'
-                    }`}
-                  >
-                    <img
-                      src={slide.src}
-                      alt={slide.title}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                    />
-                    
-                    {/* Gradient Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                    
-                    {/* Slide Info */}
-                    <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
-                      <h4 className="text-xl font-bold mb-1 drop-shadow-lg">
-                        {slide.title}
-                      </h4>
-                      {slide.category && (
-                        <span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm font-medium">
-                          {slide.category}
-                        </span>
-                      )}
+                {gallerySlides.length > 0 ? (
+                    <>
+                        {/* Main Slide */}
+                        <div className="relative aspect-[4/3] overflow-hidden">
+                            {gallerySlides.map((slide, index) => (
+                                <div
+                                    key={slide.id}
+                                    className={`absolute inset-0 transition-all duration-700 ${
+                                        index === currentSlide
+                                            ? 'opacity-100 scale-100'
+                                            : 'opacity-0 scale-105'
+                                    }`}
+                                >
+                                    <img
+                                        src={slide.src}
+                                        alt={slide.title}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                    />
+                                    
+                                    {/* Gradient Overlay */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                                    
+                                    {/* Slide Info */}
+                                    <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+                                        <h4 className="text-xl font-bold mb-1 drop-shadow-lg">
+                                            {slide.title}
+                                        </h4>
+                                        {slide.category && (
+                                            <span className="inline-block px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm font-medium">
+                                                {slide.category}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* Navigation Buttons */}
+                            <button
+                                onClick={prevSlide}
+                                className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-300 hover:scale-110"
+                                aria-label="Previous slide"
+                            >
+                                <ChevronLeft className="w-6 h-6" />
+                            </button>
+                            
+                            <button
+                                onClick={nextSlide}
+                                className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-300 hover:scale-110"
+                                aria-label="Next slide"
+                            >
+                                <ChevronRight className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {/* Dot Indicators */}
+                        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center space-x-2">
+                            {gallerySlides.map((_, index) => (
+                                <button
+                                    key={index}
+                                    onClick={() => goToSlide(index)}
+                                    className={`transition-all duration-300 rounded-full ${
+                                        index === currentSlide
+                                            ? 'bg-white w-8 h-2'
+                                            : 'bg-white/50 hover:bg-white/75 w-2 h-2'
+                                    }`}
+                                    aria-label={`Go to slide ${index + 1}`}
+                                />
+                            ))}
+                        </div>
+
+                        {/* Counter */}
+                        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm font-medium">
+                            {currentSlide + 1} / {gallerySlides.length}
+                        </div>
+                    </>
+                ) : (
+                    <div className="aspect-[4/3] flex items-center justify-center text-center bg-gray-100 rounded-2xl">
+                        <p className="text-gray-500">Belum ada foto galeri.</p>
                     </div>
-                  </div>
-                ))}
-
-                {/* Navigation Buttons */}
-                <button
-                  onClick={prevSlide}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-300 hover:scale-110"
-                  aria-label="Previous slide"
-                >
-                  <ChevronLeft className="w-6 h-6" />
-                </button>
-                
-                <button
-                  onClick={nextSlide}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white text-gray-800 rounded-full p-2 shadow-lg transition-all duration-300 hover:scale-110"
-                  aria-label="Next slide"
-                >
-                  <ChevronRight className="w-6 h-6" />
-                </button>
-              </div>
-
-              {/* Dot Indicators */}
-              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center space-x-2">
-                {gallerySlides.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => goToSlide(index)}
-                    className={`transition-all duration-300 rounded-full ${
-                      index === currentSlide
-                        ? 'bg-white w-8 h-2'
-                        : 'bg-white/50 hover:bg-white/75 w-2 h-2'
-                    }`}
-                    aria-label={`Go to slide ${index + 1}`}
-                  />
-                ))}
-              </div>
-
-              {/* Counter */}
-              <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm font-medium">
-                {currentSlide + 1} / {gallerySlides.length}
-              </div>
+                )}
             </div>
 
-            {/* Thumbnail navigation removed for cleaner responsive design */}
           </div>
         </div>
       </div>

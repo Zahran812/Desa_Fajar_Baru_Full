@@ -15,7 +15,8 @@ const GaleriPage = () => {
   const [kategori, setKategori] = useState<string>("semua");
   const [preview, setPreview] = useState<{ src: string; caption: string; title?: string; category?: string } | null>(null);
   // Pindahkan state loading, tapi pertahankan inisialisasi true
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // fetch dari backend
   useEffect(() => {
@@ -25,9 +26,7 @@ const GaleriPage = () => {
         const galleryResponse = await apiFetch("/gallery", { credentials: "include" });
 
         if (!galleryResponse.ok) {
-          console.error("Failed to fetch gallery items");
-          setGalleryItems([]);
-          return; // Jangan set loading false di sini, akan dilakukan di 'finally'
+          throw new Error("Gagal mengambil data galeri");
         }
 
         const data = await galleryResponse.json();
@@ -58,8 +57,10 @@ const GaleriPage = () => {
           }));
 
         setGalleryItems(normalized);
-      } catch (err) {
+        setError('');
+      } catch (err: any) {
         console.error("Error fetching galleries:", err);
+        setError(err.message || 'Terjadi kesalahan saat memuat galeri.');
         setGalleryItems([]);
       } finally {
         // PENTING: set loading false setelah fetch (baik sukses/gagal)
@@ -101,16 +102,6 @@ const GaleriPage = () => {
       title="Galeri Desa" 
       subtitle="Dokumentasi foto kegiatan dan potensi Desa Fajar Baru" 
       breadcrumb={[{ name: 'Beranda', href: '/' }, { name: 'Informasi' }, { name: 'Galeri Desa' }]} 
-      // TAMBAHKAN PROPS LOADING DI SINI
-      loading={loading}
-      // Tambahkan children saat loading (opsional, tergantung implementasi PageLayout)
-      loadingContent={
-        <div className="py-16">
-          <div className="container mx-auto px-4">
-            <div className="text-center py-12">Loading galeri...</div>
-          </div>
-        </div>
-      }
     >
       <div className="py-16">
         <div className="container mx-auto px-4">
@@ -145,28 +136,38 @@ const GaleriPage = () => {
               </div>
               
               {/* Results Info */}
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center space-x-2 text-gray-600">
-                  <ImageIcon className="w-4 h-4" />
-                  <span>
-                    Menampilkan <span className="font-bold text-emerald-600">{filtered.length}</span> dari <span className="font-bold">{galleryItems.length}</span> foto
-                  </span>
+              {!loading && !error && (
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center space-x-2 text-gray-600">
+                    <ImageIcon className="w-4 h-4" />
+                    <span>
+                      Menampilkan <span className="font-bold text-emerald-600">{filtered.length}</span> dari <span className="font-bold">{galleryItems.length}</span> foto
+                    </span>
+                  </div>
+                  {(query || kategori !== 'semua') && (
+                    <button
+                      onClick={() => { setQuery(''); setKategori('semua'); }}
+                      className="text-emerald-600 hover:text-emerald-700 font-medium flex items-center space-x-1 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Reset Filter</span>
+                    </button>
+                  )}
                 </div>
-                {(query || kategori !== 'semua') && (
-                  <button
-                    onClick={() => { setQuery(''); setKategori('semua'); }}
-                    className="text-emerald-600 hover:text-emerald-700 font-medium flex items-center space-x-1 transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                    <span>Reset Filter</span>
-                  </button>
-                )}
-              </div>
+              )}
             </div>
           </div>
 
           {/* Grid */}
-          {filtered.length > 0 ? (
+          {loading ? (
+            <div className="text-center py-16">
+              <p className="text-gray-600">Memuat...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-16">
+              <p className="text-red-500">{error}</p>
+            </div>
+          ) : filtered.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
               {filtered.map((p) => (
                 <figure 

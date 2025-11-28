@@ -82,6 +82,31 @@ class GalleryController extends Controller
         return response()->json($gallery);
     }
 
-    
-    // ... (metode delete)
+    /**
+     * Hapus gallery item.
+     * (Menangani request DELETE ke /api/gallery/{id})
+     */
+    public function destroy($id)
+    {
+        try {
+            $gallery = Gallery::findOrFail($id);
+
+            // Hapus file gambar dari storage
+            if ($gallery->image_url && Storage::disk('public')->exists($gallery->image_url)) {
+                Storage::disk('public')->delete($gallery->image_url);
+            }
+
+            $gallery->delete();
+
+            return response()->json([
+                'message' => 'Foto berhasil dihapus!',
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error deleting gallery: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Terjadi kesalahan saat menghapus foto.',
+            ], 500);
+        }
+    }
 }

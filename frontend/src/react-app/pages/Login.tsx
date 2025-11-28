@@ -63,7 +63,8 @@ const IllustrationSection = memo(({ side, isLogin }: { side: 'left' | 'right'; i
 ));
 
 const Login = () => {
-  const { user, login, register, loading, isDemoMode } = useAuth();
+  const { user, login, register, loading } = useAuth();
+  const isDemoMode = false; // Backend is now functional
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);

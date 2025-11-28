@@ -664,7 +664,7 @@ Dengan semangat inovasi, kerjasama yang solid, dan dukungan teknologi, masa depa
   }
 ];
 
-export const categoryLabels = {
+export const categoryLabels: { [key: string]: string } = {
   semua: 'Semua',
   berita: 'Berita',
   artikel: 'Artikel'

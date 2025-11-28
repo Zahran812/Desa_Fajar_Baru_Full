@@ -13,6 +13,8 @@ interface User {
   full_name: string;
   role: string;
   rt_number?: string;
+  phone?: string;
+  address?: string;
 }
 
 interface AuthContextType {

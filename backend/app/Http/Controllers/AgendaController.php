@@ -88,9 +88,35 @@ class AgendaController extends Controller
     public function index()
     {
         $agendas = Agenda::orderBy('date', 'desc')->get(); // Urutkan dari yang terbaru
-        
+
         return response()->json([
             'agendas' => $agendas,
         ]);
+    }
+
+    /**
+     * Hapus agenda.
+     * (Menangani request DELETE ke /api/agenda/{id})
+     */
+    public function destroy(Agenda $agenda)
+    {
+        try {
+            // Opsional: Cek otorisasi (pastikan hanya operator/admin yang bisa hapus)
+            // if (auth()->user()->role !== 'operator' && auth()->user()->role !== 'admin') {
+            //     return response()->json(['message' => 'Unauthorized'], 403);
+            // }
+
+            $agenda->delete();
+
+            return response()->json([
+                'message' => 'Agenda berhasil dihapus!',
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Error deleting agenda: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Terjadi kesalahan saat menghapus agenda.',
+            ], 500);
+        }
     }
 }

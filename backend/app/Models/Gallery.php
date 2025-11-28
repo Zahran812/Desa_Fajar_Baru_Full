@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Gallery extends Model
 {
@@ -26,8 +27,13 @@ class Gallery extends Model
     // Mutator untuk mendapatkan URL publik gambar
     public function getImageUrlAttribute($value)
     {
-        // Pastikan URL yang dikembalikan adalah URL publik yang dapat diakses.
-        // Jika hosting di cloud (S3, dll), ganti 'storage' dengan method yang sesuai.
-        return url('storage/' . $value);
+        // Jika tidak ada nilai, kembalikan string kosong
+        if (empty($value)) {
+            return '';
+        }
+
+        // Storage::url() akan secara otomatis menambahkan APP_URL/storage/
+        // yang sesuai dengan konfigurasi disk 'public'.
+        return Storage::url($value);
     }
 }

@@ -7,12 +7,29 @@ use App\Http\Controllers\UserListController;
 use App\Http\Controllers\UserApprovalController;
 use App\Http\Controllers\AgendaController;
 use App\Http\Controllers\GalleryController;
+use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\RequestController;
+use App\Http\Controllers\Api\ArticleController;
+use App\Http\Controllers\Api\CommentController;
+use App\Http\Controllers\Api\Dashboard\ArticleController as DashboardArticleController;
 
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [RegisterController::class, 'register']);
-Route::get('/agenda', [AgendaController::class, 'index']); // Untuk mengambil semua agenda (opsional)
+Route::get('/agenda', [AgendaController::class, 'index']); // Untuk m\
 Route::get('/gallery', [GalleryController::class, 'index']);
+Route::get('pubservices', [ServiceController::class, 'indexPublic']);
+// Route ini dapat diakses publik untuk melihat detail 1 layanan
+Route::get('services/{service}', [ServiceController::class, 'showPublic']);
+
+// Download endpoints - handled manually auth di controller (support token via query param)
+Route::get('requests/output/{id}/download', [RequestController::class, 'downloadOutput']);
+Route::get('requests/document/{id}/download', [RequestController::class, 'downloadDocument']);
+
+// --- Rute Publik untuk Berita/Artikel (Tanpa otentikasi) ---
+Route::get('/articles', [ArticleController::class, 'index']);
+Route::get('/articles/{slug}', [ArticleController::class, 'show']);
+
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
@@ -22,9 +39,31 @@ Route::middleware('auth:sanctum')->group(function () {
     // Agenda CRUD (Resource-like routes)
     Route::post('/agenda', [AgendaController::class, 'store']); // Untuk membuat agenda baru
     Route::put('/agenda/{agenda}', [AgendaController::class, 'update']); // Untuk update agenda
-   
+    Route::delete('/agenda/{agenda}', [AgendaController::class, 'destroy']); // Untuk delete agenda
+
     // Gallery CRUD
     Route::post('/gallery', [GalleryController::class, 'store']);
     Route::post('/gallery/{id}', [GalleryController::class, 'update']);
-});
+    Route::delete('/gallery/{id}', [GalleryController::class, 'destroy']); // Untuk delete gallery
 
+    Route::apiResource('services', ServiceController::class);
+    Route::get('admin/services', [ServiceController::class, 'indexAdmin']);
+
+
+    Route::post('requests', [RequestController::class, 'store']); // Mengirim pengajuan baru
+    Route::get('requests/me', [RequestController::class, 'index']); // Melihat daftar pengajuan sendiri
+    Route::get('requests/all', [RequestController::class, 'indexAll']); // Melihat semua pengajuan (admin/operator)
+    Route::put('requests/{id}/status', [RequestController::class, 'updateStatus']); // Update status ke in_progress
+    Route::post('requests/{id}/approve', [RequestController::class, 'approve']); // Approve pengajuan
+    Route::post('requests/{id}/reject', [RequestController::class, 'reject']); // Reject pengajuan
+
+    // --- Rute untuk Operator Dashboard (Artikel/Berita) ---
+    // Asumsi ada middleware 'role:operator' untuk memeriksa peran user
+    Route::prefix('dashboard')->group(function () {
+        Route::apiResource('articles', DashboardArticleController::class);
+    });
+
+    // --- Rute untuk Warga (memberi komentar) ---
+    // Asumsi ada middleware 'role:citizen' untuk memeriksa peran user
+    Route::post('/articles/{article}/comments', [CommentController::class, 'store']);
+});

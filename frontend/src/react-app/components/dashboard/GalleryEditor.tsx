@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Save, X, Upload, Image as ImageIcon, Tag, 
-  Eye, AlertCircle, FileImage, Trash2
+  AlertCircle, FileImage, Trash2
 } from 'lucide-react';
 
 // Tipe Data untuk File yang di-upload

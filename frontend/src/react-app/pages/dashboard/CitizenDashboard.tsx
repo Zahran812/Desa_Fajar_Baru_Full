@@ -11,12 +11,35 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
-  seedIfEmpty,
   getMessagesForUser,
   sendMessage,
   type AppMessage,
   type MessageCategory,
 } from '@/react-app/lib/messageStore';
+
+interface ServiceTemplate {
+  id: number;
+  name: string;
+  file_url: string; // URL publik dari server
+}
+
+interface Service {
+  id: number;
+  name: string;
+  description: string;
+  requirements: string[]; // Array of strings untuk persyaratan
+  processing_time: string;
+  fee: number;
+  status: string;
+  templates: ServiceTemplate[];
+}
+
+interface RequestOutput {
+  id: number;
+  file_name: string;
+  file_path: string;
+  created_at: string;
+}
 
 interface Request {
   id: number;
@@ -26,6 +49,7 @@ interface Request {
   status: string;
   documents?: string;
   response?: string;
+  outputs?: RequestOutput[];
   created_at: string;
   updated_at: string;
 }
@@ -42,7 +66,6 @@ const CitizenDashboard = () => {
     request_type: '',
     subject: '',
     description: '',
-    documents: ''
   });
   // Extended profile data with simulation
   const [profileForm, setProfileForm] = useState({
@@ -67,6 +90,10 @@ const CitizenDashboard = () => {
     ktp_image: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=800&q=80' // Simulasi gambar KTP
   });
   const [editingProfile, setEditingProfile] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  // State untuk menyimpan file upload. Key: nama persyaratan, Value: File object
+  const [requiredDocuments, setRequiredDocuments] = useState<Record<string, File | null>>({});
   // Messages UI state
   const [msgCategoryFilter, setMsgCategoryFilter] = useState<MessageCategory | 'all'>('all');
   const [compose, setCompose] = useState({ category: '' as MessageCategory | '', subject: '', content: '' });
@@ -84,322 +111,84 @@ const CitizenDashboard = () => {
   }, [user]);
 
   // Fetch user data and load messages from local store (demo)
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-      // Seed demo messages so citizen sees initial data as well
-      seedIfEmpty(1); // operator id assumed 1 in demo
-      
-      try {
-        // Fetch requests
-        const requestsResponse = await apiFetch(`/api/requests?user_id=${user.id}`, {
-          credentials: 'include'
-        });
-        if (requestsResponse.ok) {
-          const requestsData = await requestsResponse.json();
-          // If empty, add simulation data
-          if (!requestsData.requests || requestsData.requests.length === 0) {
-            // Add simulation data for demo
-            const simulationRequests: Request[] = [
-              {
-                id: 1,
-                request_type: 'Surat Keterangan Domisili',
-                subject: 'Pengajuan Surat Domisili untuk Pendaftaran Sekolah',
-                description: 'Surat domisili diperlukan untuk pendaftaran anak masuk SD Negeri 1 Fajar Baru tahun ajaran 2024/2025',
-                status: 'pending',
-                created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 jam lalu
-                updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 2,
-                request_type: 'Surat Keterangan Usaha',
-                subject: 'Surat Keterangan Usaha untuk Pengajuan Modal Bank',
-                description: 'Diperlukan untuk mengajukan kredit usaha mikro di Bank BRI dengan nilai pinjaman Rp 50.000.000',
-                status: 'in_progress',
-                created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 hari lalu
-                updated_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 3,
-                request_type: 'Surat Keterangan Tidak Mampu',
-                subject: 'SKTM untuk Berobat di Rumah Sakit',
-                description: 'Diperlukan untuk mendapatkan keringanan biaya pengobatan ibu di RSUD Pringsewu',
-                status: 'approved',
-                response: 'Surat telah disetujui dan dapat diambil di kantor desa pada jam kerja (08.00-15.00 WIB). Jangan lupa membawa KTP asli.',
-                created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 hari lalu
-                updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 4,
-                request_type: 'Surat Keterangan Belum Menikah',
-                subject: 'Surat Keterangan Belum Menikah untuk Melamar Kerja',
-                description: 'Diperlukan sebagai persyaratan melamar pekerjaan di PT Maju Bersama Indonesia',
-                status: 'rejected',
-                response: 'Mohon lengkapi dokumen KK dan KTP. Foto yang diunggah kurang jelas. Silakan ajukan ulang dengan dokumen yang lebih jelas.',
-                created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 hari lalu
-                updated_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
-              },
-              {
-                id: 5,
-                request_type: 'Surat Keterangan Domisili',
-                subject: 'Surat Domisili untuk Pembuatan NPWP',
-                description: 'Diperlukan untuk membuat NPWP pribadi di kantor pajak Lampung Selatan',
-                status: 'approved',
-                response: 'Surat sudah selesai diproses dan telah dikirim via email. Anda juga dapat mengambil hardcopy di kantor desa.',
-                created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 hari lalu
-                updated_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
-              }
-            ];
-            setRequests(simulationRequests);
-          } else {
-            setRequests(requestsData.requests || []);
-          }
-        } else {
-          // If API fails, use simulation data
-          const simulationRequests: Request[] = [
-            {
-              id: 1,
-              request_type: 'Surat Keterangan Domisili',
-              subject: 'Pengajuan Surat Domisili untuk Pendaftaran Sekolah',
-              description: 'Surat domisili diperlukan untuk pendaftaran anak masuk SD Negeri 1 Fajar Baru tahun ajaran 2024/2025',
-              status: 'pending',
-              created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-              updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-            },
-            {
-              id: 2,
-              request_type: 'Surat Keterangan Usaha',
-              subject: 'Surat Keterangan Usaha untuk Pengajuan Modal Bank',
-              description: 'Diperlukan untuk mengajukan kredit usaha mikro di Bank BRI dengan nilai pinjaman Rp 50.000.000',
-              status: 'in_progress',
-              created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-              updated_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-            },
-            {
-              id: 3,
-              request_type: 'Surat Keterangan Tidak Mampu',
-              subject: 'SKTM untuk Berobat di Rumah Sakit',
-              description: 'Diperlukan untuk mendapatkan keringanan biaya pengobatan ibu di RSUD Pringsewu',
-              status: 'approved',
-              response: 'Surat telah disetujui dan dapat diambil di kantor desa pada jam kerja (08.00-15.00 WIB). Jangan lupa membawa KTP asli.',
-              created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-              updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-            },
-            {
-              id: 4,
-              request_type: 'Surat Keterangan Belum Menikah',
-              subject: 'Surat Keterangan Belum Menikah untuk Melamar Kerja',
-              description: 'Diperlukan sebagai persyaratan melamar pekerjaan di PT Maju Bersama Indonesia',
-              status: 'rejected',
-              response: 'Mohon lengkapi dokumen KK dan KTP. Foto yang diunggah kurang jelas. Silakan ajukan ulang dengan dokumen yang lebih jelas.',
-              created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-              updated_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
-            },
-            {
-              id: 5,
-              request_type: 'Surat Keterangan Domisili',
-              subject: 'Surat Domisili untuk Pembuatan NPWP',
-              description: 'Diperlukan untuk membuat NPWP pribadi di kantor pajak Lampung Selatan',
-              status: 'approved',
-              response: 'Surat sudah selesai diproses dan telah dikirim via email. Anda juga dapat mengambil hardcopy di kantor desa.',
-              created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-              updated_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
-            }
-          ];
-          setRequests(simulationRequests);
-        }
-        // Load messages from local store (both sent and received)
-        let userMessages = getMessagesForUser(user.id);
-        
-        // If no messages, add simulation data
-        if (userMessages.length === 0) {
-          // Add simulation messages for all categories
-          const simulationMessages: AppMessage[] = [
-            {
-              id: '1',
-              from_user_id: 1, // operator
-              to_user_id: user.id,
-              subject: 'Surat Domisili Anda Telah Disetujui',
-              content: 'Selamat! Pengajuan Surat Keterangan Domisili Anda untuk pendaftaran sekolah telah disetujui. Surat dapat diambil di kantor desa pada jam kerja (08.00-15.00 WIB) atau diunduh melalui dashboard.',
-              category: 'administrasi' as MessageCategory,
-              status: 'selesai',
-              is_read: false,
-              created_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // 1 jam lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '2',
-              from_user_id: user.id,
-              to_user_id: 1,
-              subject: 'Pertanyaan Terkait Surat Keterangan Usaha',
-              content: 'Selamat pagi Bapak/Ibu operator. Saya ingin menanyakan dokumen apa saja yang diperlukan untuk mengajukan Surat Keterangan Usaha untuk keperluan pengajuan kredit bank. Terima kasih.',
-              category: 'administrasi' as MessageCategory,
-              status: 'dibaca',
-              is_read: true,
-              created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5 jam lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '3',
-              from_user_id: 1,
-              to_user_id: user.id,
-              subject: 'Informasi Jadwal Pelayanan PPID',
-              content: 'Kepada seluruh warga, kami informasikan bahwa layanan PPID (Pejabat Pengelola Informasi dan Dokumentasi) akan tersedia setiap hari Senin dan Rabu pukul 09.00-14.00 WIB di kantor desa.',
-              category: 'ppid' as MessageCategory,
-              status: 'dibaca',
-              is_read: true,
-              created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 hari lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '4',
-              from_user_id: user.id,
-              to_user_id: 1,
-              subject: 'Pengaduan Jalan Rusak di RT 03',
-              content: 'Yth. Bapak/Ibu Operator Desa, saya ingin melaporkan kondisi jalan di RT 03 yang sudah rusak parah dan berlubang. Mohon dapat ditindaklanjuti untuk perbaikan. Terima kasih.',
-              category: 'pengaduan' as MessageCategory,
-              status: 'diproses',
-              is_read: true,
-              created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 hari lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '5',
-              from_user_id: 1,
-              to_user_id: user.id,
-              subject: 'Tindak Lanjut Pengaduan Jalan Rusak',
-              content: 'Terima kasih atas laporannya. Pengaduan Anda telah kami teruskan ke dinas terkait. Tim survey akan melakukan pengecekan lokasi minggu depan. Kami akan informasikan perkembangan selanjutnya.',
-              category: 'pengaduan' as MessageCategory,
-              status: 'diproses',
-              is_read: false,
-              created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 hari lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '6',
-              from_user_id: user.id,
-              to_user_id: 1,
-              subject: 'Usulan Program Posyandu Balita',
-              content: 'Assalamualaikum, saya ingin menyampaikan aspirasi untuk mengadakan program Posyandu Balita yang lebih rutin di desa kita, mengingat banyak ibu-ibu muda yang memerlukan layanan kesehatan untuk anak.',
-              category: 'aspirasi' as MessageCategory,
-              status: 'selesai',
-              is_read: true,
-              created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), // 4 hari lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '7',
-              from_user_id: 1,
-              to_user_id: user.id,
-              subject: 'Sambutan Aspirasi Program Posyandu',
-              content: 'Waalaikumsalam. Terima kasih atas aspirasi yang sangat baik. Kami akan jadwalkan rapat dengan puskesmas dan kader kesehatan untuk merencanakan program ini. Aspirasi Anda sangat kami apresiasi.',
-              category: 'aspirasi' as MessageCategory,
-              status: 'selesai',
-              is_read: true,
-              created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 hari lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '8',
-              from_user_id: user.id,
-              to_user_id: 1,
-              subject: 'Konsultasi Persyaratan Pembuatan KK Baru',
-              content: 'Selamat siang, saya mau tanya untuk pembuatan KK baru karena pisah rumah, dokumen apa saja yang perlu disiapkan? Apakah bisa diurus online atau harus datang ke kantor desa?',
-              category: 'chat' as MessageCategory,
-              status: 'dibaca',
-              is_read: true,
-              created_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(), // 6 hari lalu
-              history: [],
-              replies: []
-            },
-            {
-              id: '9',
-              from_user_id: 1,
-              to_user_id: user.id,
-              subject: 'Pengajuan Ditolak - Dokumen Kurang Lengkap',
-              content: 'Pengajuan Surat Keterangan Belum Menikah Anda ditolak karena dokumen KTP dan KK yang diunggah kurang jelas. Mohon untuk mengajukan kembali dengan foto dokumen yang lebih jelas dan terbaca.',
-              category: 'administrasi' as MessageCategory,
-              status: 'baru',
-              is_read: false,
-              created_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // 4 jam lalu
-              history: [],
-              replies: []
-            }
-          ];
-          
-          // Store to local storage (optional for demo)
-          userMessages = simulationMessages;
-        }
-        
-        setMessages(userMessages);
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-        // Use simulation data on error
-        const simulationRequests: Request[] = [
-          {
-            id: 1,
-            request_type: 'Surat Keterangan Domisili',
-            subject: 'Pengajuan Surat Domisili untuk Pendaftaran Sekolah',
-            description: 'Surat domisili diperlukan untuk pendaftaran anak masuk SD Negeri 1 Fajar Baru tahun ajaran 2024/2025',
-            status: 'pending',
-            created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 2,
-            request_type: 'Surat Keterangan Usaha',
-            subject: 'Surat Keterangan Usaha untuk Pengajuan Modal Bank',
-            description: 'Diperlukan untuk mengajukan kredit usaha mikro di Bank BRI dengan nilai pinjaman Rp 50.000.000',
-            status: 'in_progress',
-            created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 3,
-            request_type: 'Surat Keterangan Tidak Mampu',
-            subject: 'SKTM untuk Berobat di Rumah Sakit',
-            description: 'Diperlukan untuk mendapatkan keringanan biaya pengobatan ibu di RSUD Pringsewu',
-            status: 'approved',
-            response: 'Surat telah disetujui dan dapat diambil di kantor desa pada jam kerja (08.00-15.00 WIB). Jangan lupa membawa KTP asli.',
-            created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 4,
-            request_type: 'Surat Keterangan Belum Menikah',
-            subject: 'Surat Keterangan Belum Menikah untuk Melamar Kerja',
-            description: 'Diperlukan sebagai persyaratan melamar pekerjaan di PT Maju Bersama Indonesia',
-            status: 'rejected',
-            response: 'Mohon lengkapi dokumen KK dan KTP. Foto yang diunggah kurang jelas. Silakan ajukan ulang dengan dokumen yang lebih jelas.',
-            created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString()
-          },
-          {
-            id: 5,
-            request_type: 'Surat Keterangan Domisili',
-            subject: 'Surat Domisili untuk Pembuatan NPWP',
-            description: 'Diperlukan untuk membuat NPWP pribadi di kantor pajak Lampung Selatan',
-            status: 'approved',
-            response: 'Surat sudah selesai diproses dan telah dikirim via email. Anda juga dapat mengambil hardcopy di kantor desa.',
-            created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            updated_at: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
-          }
-        ];
-        setRequests(simulationRequests);
-      } finally {
-        setLoading(false);
+useEffect(() => {
+  const fetchServices = async () => {
+    try {
+      const response = await apiFetch(`/pubservices`);
+      if (response.ok) {
+        const data: Service[] = await response.json();
+        setServices(data);
+      } else {
+        console.error("Failed to fetch services");
       }
-    };
+    } catch (error) {
+      console.error('Error fetching services:', error);
+    }
+  };
 
-    fetchData();
-  }, [user]);
+  const fetchRequests = async () => {
+    await fetchServices(); // <- HARUS PAKAI KURUNG
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      if (!token || !user) {
+        console.error("No auth token found");
+        setRequests([]);
+        return;
+      }
+
+      const response = await apiFetch(`/requests/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error("Failed to fetch requests");
+        setRequests([]);
+        return;
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data.requests) ? data.requests : [];
+
+      const validRequests = items.filter((item: Request) =>
+        item &&
+        typeof item === "object" &&
+        "id" in item &&
+        "request_type" in item &&
+        "subject" in item &&
+        "description" in item &&
+        "status" in item &&
+        "user" in item &&
+        "service" in item &&
+        "documents" in item &&
+        Array.isArray(item.documents)
+      );
+
+      setRequests(validRequests);
+
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchRequests();
+}, [user]);
+
+
+  useEffect(() => {
+    const serviceId = Number(newRequestForm.request_type);
+    const service = services.find(s => s.id === serviceId) || null;
+    setSelectedService(service);
+    // Reset state dokumen persyaratan baru
+    const initialDocs: Record<string, File | null> = {};
+    service?.requirements.forEach(req => {
+      initialDocs[req] = null;
+    });
+    setRequiredDocuments(initialDocs);
+  }, [newRequestForm.request_type, services]);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
@@ -458,73 +247,149 @@ const CitizenDashboard = () => {
 
   const handleNewRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !selectedService) return;
+
+    // Basic Form validation
+    if (!newRequestForm.subject.trim() || !newRequestForm.description.trim()) {
+      alert('Mohon lengkapi Judul dan Keperluan.');
+      return;
+    }
+
+    // Document validation
+    if (!validateDocuments()) {
+      alert('Mohon lengkapi semua dokumen persyaratan yang diperlukan.');
+      return;
+    }
 
     setSubmitting(true);
+
+    // 1. Buat FormData
+    const formData = new FormData();
+
+    // 2. Tambahkan data form utama
+    formData.append('user_id', user.id.toString());
+    formData.append('request_type', selectedService.name);
+    formData.append('service_id', selectedService.id.toString());
+    formData.append('subject', newRequestForm.subject);
+    formData.append('description', newRequestForm.description);
+
+    // 3. Tambahkan file dokumen persyaratan
+    const documentKeys: string[] = [];
+
+    Object.entries(requiredDocuments).forEach(([requirementName, file], index) => {
+      if (file) {
+        const fileKey = `document_${index}`;
+        formData.append(fileKey, file);
+
+        // Mapping "Nama Persyaratan:document_0"
+        documentKeys.push(`${requirementName}:${fileKey}`);
+      }
+    });
+
+    // Kirim mapping nama dokumen
+    formData.append('document_mapping', JSON.stringify(documentKeys));
+
+    const token = localStorage.getItem("auth_token");
+
     try {
-      const response = await apiFetch('/api/requests', {
+      // Pastikan token ada sebelum mencoba mengirim
+      if (!token) {
+        throw new Error("Authentication token not found.");
+      }
+
+      const response = await apiFetch('/requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          user_id: user.id,
-          ...newRequestForm
-        })
+        body: formData,
+        headers: {
+          // Menyertakan token Bearer untuk Sanctum
+        Authorization: `Bearer ${token}`, 
+        // biarkan browser yang mengaturnya secara otomatis.
+        },
+        credentials: 'include', 
       });
 
       if (response.ok) {
         const data = await response.json();
         setRequests(prev => [data.request, ...prev]);
-        setNewRequestForm({
-          request_type: '',
-          subject: '',
-          description: '',
-          documents: ''
-        });
+
+        setNewRequestForm({ request_type: '', subject: '', description: '' });
+        setSelectedService(null);
+        setRequiredDocuments({});
         setActiveTab('requests');
+
+        alert('Pengajuan Berhasil Dikirim!');
+      } else {
+        const errorData = await response.json();
+        console.error('API Error:', errorData);
+        alert(`Gagal mengirim pengajuan: ${errorData.message || 'Terjadi kesalahan server.'}`);
       }
     } catch (error) {
       console.error('Failed to submit request:', error);
+      alert('Terjadi kesalahan jaringan.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // In real app, this would update user profile
-    setEditingProfile(false);
-    alert('Profil berhasil diperbarui!');
+
+    const handleProfileUpdate = async (e: React.FormEvent) => {
+      e.preventDefault();
+      // In real app, this would update user profile
+      setEditingProfile(false);
+      alert('Profil berhasil diperbarui!');
+    };
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case 'pending': return 'bg-yellow-100 text-yellow-800';
+        case 'approved': return 'bg-emerald-100 text-emerald-800';
+        case 'rejected': return 'bg-red-100 text-red-800';
+        case 'in_progress': return 'bg-blue-100 text-blue-800';
+        default: return 'bg-gray-100 text-gray-800';
+      }
+    };
+
+    const getStatusLabel = (status: string) => {
+      switch (status) {
+        case 'pending': return 'Sedang Dikirim';
+        case 'approved': return 'Diterima';
+        case 'rejected': return 'Ditolak';
+        case 'in_progress': return 'Sedang Diproses';
+        default: return status;
+      }
+    };
+
+    const getStatusIcon = (status: string) => {
+      switch (status) {
+        case 'pending': return <Loader2 className="w-4 h-4 animate-spin" />;
+        case 'approved': return <CheckCircle2 className="w-4 h-4" />;
+        case 'rejected': return <XCircle className="w-4 h-4" />;
+        case 'in_progress': return <Eye className="w-4 h-4" />;
+        default: return <AlertCircle className="w-4 h-4" />;
+      }
+    };
+    const handleDocumentUpload = (requirementName: string, file: File) => {
+    setRequiredDocuments(prev => ({
+      ...prev,
+      [requirementName]: file
+    }));
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'approved': return 'bg-emerald-100 text-emerald-800';
-      case 'rejected': return 'bg-red-100 text-red-800';
-      case 'in_progress': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  // Handler untuk menghapus file
+  const handleRemoveDocument = (requirementName: string) => {
+    setRequiredDocuments(prev => ({
+      ...prev,
+      [requirementName]: null
+    }));
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'pending': return 'Sedang Dikirim';
-      case 'approved': return 'Diterima';
-      case 'rejected': return 'Ditolak';
-      case 'in_progress': return 'Sedang Diproses';
-      default: return status;
-    }
-  };
+  // Validasi tambahan untuk semua dokumen persyaratan
+  const validateDocuments = () => {
+    if (!selectedService) return false;
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return <Loader2 className="w-4 h-4 animate-spin" />;
-      case 'approved': return <CheckCircle2 className="w-4 h-4" />;
-      case 'rejected': return <XCircle className="w-4 h-4" />;
-      case 'in_progress': return <Eye className="w-4 h-4" />;
-      default: return <AlertCircle className="w-4 h-4" />;
-    }
+    return selectedService.requirements.every(
+      req => requiredDocuments[req] !== null
+    );
   };
 
   const renderDashboard = () => (
@@ -1186,8 +1051,20 @@ const CitizenDashboard = () => {
                         {getStatusIcon(request.status)}
                         {getStatusLabel(request.status)}
                       </span>
-                      {request.status === 'approved' && (
-                        <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                      {request.status === 'approved' && request.outputs && request.outputs.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const token = localStorage.getItem('auth_token');
+                            const output = request.outputs![0];
+                            const url = `${import.meta.env.VITE_API_BASE_URL}/requests/output/${output.id}/download?token=${encodeURIComponent(token || '')}`;
+
+                            console.log('Download URL:', url);
+
+                            // Open URL directly - browser will handle download
+                            window.open(url, '_blank');
+                          }}
+                          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                        >
                           <Download className="w-4 h-4" />
                           Unduh Surat
                         </button>
@@ -1409,27 +1286,41 @@ const CitizenDashboard = () => {
       
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8">
         <form onSubmit={handleNewRequest} className="space-y-8">
+
+          {/* 1. DROP-DOWN PILIH JENIS SURAT (DINAMIS DARI API) */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Jenis Surat *
+              Pilih Jenis Surat *
             </label>
-            <select 
+            <select
               value={newRequestForm.request_type}
-              onChange={(e) => setNewRequestForm(prev => ({ ...prev, request_type: e.target.value }))}
-              className="w-full px-4 py-3 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all duration-200" 
+              onChange={(e) =>
+                setNewRequestForm((prev) => ({ ...prev, request_type: e.target.value }))
+              }
+              className="w-full px-4 py-3 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all duration-200"
               required
             >
-              <option value="">Pilih jenis surat</option>
-              <option value="domisili">Surat Keterangan Domisili</option>
-              <option value="usaha">Surat Keterangan Usaha</option>
-              <option value="tidak_mampu">Surat Keterangan Tidak Mampu</option>
-              <option value="belum_menikah">Surat Keterangan Belum Menikah</option>
-              <option value="kelahiran">Surat Keterangan Kelahiran</option>
-              <option value="kematian">Surat Keterangan Kematian</option>
-              <option value="pindah">Surat Keterangan Pindah</option>
+              <option value="">Pilih jenis layanan</option>
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
             </select>
+
+            {selectedService && (
+              <div className="mt-2 text-sm text-gray-600 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="font-semibold text-gray-800 mb-1">Deskripsi:</p>
+                <p>{selectedService.description}</p>
+                <p className="mt-2 flex items-center gap-1 text-xs text-blue-600">
+                  <Clock className="w-3 h-3" />
+                  Proses: {selectedService.processing_time}
+                </p>
+              </div>
+            )}
           </div>
-          
+
+          {/* Form Data Lainnya (Judul & Keperluan) */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-3">
               Judul/Subjek *
@@ -1437,51 +1328,120 @@ const CitizenDashboard = () => {
             <input
               type="text"
               value={newRequestForm.subject}
-              onChange={(e) => setNewRequestForm(prev => ({ ...prev, subject: e.target.value }))}
+              onChange={(e) =>
+                setNewRequestForm((prev) => ({ ...prev, subject: e.target.value }))
+              }
               className="w-full px-4 py-3 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all duration-200"
               placeholder="Contoh: Pengajuan Surat Domisili untuk Pendaftaran Sekolah"
               required
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-3">
               Keperluan *
             </label>
             <textarea
               value={newRequestForm.description}
-              onChange={(e) => setNewRequestForm(prev => ({ ...prev, description: e.target.value }))}
+              onChange={(e) =>
+                setNewRequestForm((prev) => ({ ...prev, description: e.target.value }))
+              }
               className="w-full px-4 py-3 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white transition-all duration-200"
               rows={4}
               placeholder="Jelaskan secara detail keperluan penggunaan surat ini"
               required
             ></textarea>
           </div>
-          
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              Dokumen Pendukung
-            </label>
-            <div className="mt-1 flex justify-center px-8 pt-8 pb-8 border-2 border-emerald-200 border-dashed rounded-2xl bg-gradient-to-br from-emerald-50/50 to-blue-50/50 hover:border-emerald-300 transition-all duration-200">
-              <div className="space-y-3 text-center">
-                <Upload className="mx-auto h-16 w-16 text-emerald-400" />
-                <div className="flex text-sm text-gray-600">
-                  <label className="relative cursor-pointer bg-gradient-to-r from-emerald-500 to-blue-500 text-white rounded-xl px-4 py-2 font-medium hover:shadow-lg transition-all duration-200">
-                    <span>Upload file</span>
-                    <input type="file" className="sr-only" multiple />
-                  </label>
-                  <p className="pl-3 pt-2">atau drag and drop</p>
-                </div>
-                <p className="text-xs text-gray-500 font-medium">PNG, JPG, PDF up to 10MB</p>
+
+          {/* 2. DOKUMEN PERSYARATAN (DINAMIS & UPLOAD) */}
+          {selectedService && selectedService.requirements.length > 0 && (
+            <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-xl space-y-4">
+              <h3 className="text-lg font-bold text-emerald-800 flex items-center gap-2">
+                <Upload className="w-5 h-5" /> Dokumen Persyaratan *
+              </h3>
+              <p className="text-sm text-emerald-700">
+                Mohon lengkapi semua dokumen yang wajib diunggah sesuai dengan layanan
+                <strong> {selectedService.name} </strong>.
+              </p>
+
+              <div className="space-y-4">
+                {selectedService.requirements.map((req, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-4 p-3 bg-white rounded-lg border border-gray-200"
+                  >
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {index + 1}. {req} <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="file"
+                        onChange={(e) => {
+                          const file = e.target.files ? e.target.files[0] : null;
+                          if (file) handleDocumentUpload(req, file);
+                        }}
+                        className="w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+                        accept="image/*, application/pdf"
+                        required={!requiredDocuments[req]}
+                      />
+
+                      {requiredDocuments[req] && (
+                        <div className="flex justify-between items-center mt-2 text-xs text-emerald-600 bg-emerald-50 p-2 rounded-lg">
+                          <p className="flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <strong>{requiredDocuments[req]?.name}</strong>
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDocument(req)}
+                            className="text-red-500 hover:text-red-700 p-1"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-            <p className="text-xs text-emerald-600 mt-2 font-medium">Upload KTP, KK, atau dokumen pendukung lainnya</p>
-          </div>
-          
+          )}
+
+          {/* 3. TEMPLATE DOKUMEN (DOWNLOAD) */}
+          {selectedService && selectedService.templates.length > 0 && (
+            <div className="p-6 bg-blue-50 border border-blue-200 rounded-xl space-y-4">
+              <h3 className="text-lg font-bold text-blue-800 flex items-center gap-2">
+                <Download className="w-5 h-5" /> Template Dokumen
+              </h3>
+              <p className="text-sm text-blue-700">
+                Unduh template formulir berikut jika diperlukan untuk melengkapi persyaratan.
+              </p>
+
+              <div className="space-y-2">
+                {selectedService.templates.map((template) => (
+                  <a
+                    key={template.id}
+                    href={template.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-3 bg-white hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                      <span className="font-medium text-gray-900">{template.name}</span>
+                    </div>
+                    <Download className="w-4 h-4 text-blue-600" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tombol Kirim */}
           <div className="flex space-x-4">
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || !selectedService || !validateDocuments()}
               className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white px-8 py-4 rounded-xl font-semibold hover:shadow-lg transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 flex items-center space-x-2"
             >
               {submitting ? (
@@ -1496,9 +1456,18 @@ const CitizenDashboard = () => {
                 </>
               )}
             </button>
+
             <button
               type="button"
-              onClick={() => setNewRequestForm({ request_type: '', subject: '', description: '', documents: '' })}
+              onClick={() => {
+                setNewRequestForm({
+                  request_type: '',
+                  subject: '',
+                  description: ''
+                });
+                setSelectedService(null);
+                setRequiredDocuments({});
+              }}
               className="px-8 py-4 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 transition-all duration-200 font-medium hover:scale-105"
             >
               Reset Form

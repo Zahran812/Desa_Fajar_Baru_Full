@@ -1,159 +1,109 @@
 import PageLayout from '@/react-app/components/PageLayout';
-import { 
+import {
   FileText, Clock, CheckCircle, Download, ChevronDown,
   Home, Users, Baby, UserPlus, Briefcase, GraduationCap,
-  Phone, Mail, Upload
+  Phone, Mail, Upload, LucideIcon
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiGet } from '@/react-app/lib/api';
+
+interface ServiceTemplate {
+  id: number;
+  name: string;
+  file_url: string;
+}
+
+interface ServiceData {
+  id: number;
+  name: string;
+  description: string;
+  requirements: string[];
+  processing_time: string;
+  fee: number;
+  status: 'active' | 'inactive';
+  category: string;
+  templates?: ServiceTemplate[];
+}
+
+interface ServiceDisplay {
+  id: number | string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  color: string;
+  status: string;
+  estimatedTime: string;
+  requirements: string[];
+  documents: ServiceTemplate[];
+}
 
 const AdministrasiPage = () => {
-  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [selectedService, setSelectedService] = useState<number | string | null>(null);
+  const [services, setServices] = useState<ServiceDisplay[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const services = [
-    {
-      id: 'domisili',
-      title: 'Surat Keterangan Domisili',
-      description: 'Pengurusan surat keterangan domisili untuk berbagai keperluan',
-      icon: Home,
-      color: 'bg-blue-500',
-      status: 'online',
-      estimatedTime: '3-5 hari',
-      requirements: [
-        'KTP asli dan fotocopy',
-        'KK asli dan fotocopy', 
-        'Surat pengantar RT/RW',
-        'Formulir permohonan'
-      ],
-      documents: ['Form Permohonan Domisili', 'Syarat dan Ketentuan'],
-      process: [
-        'Mengisi formulir permohonan online',
-        'Upload dokumen persyaratan',
-        'Verifikasi dokumen oleh petugas',
-        'Pembayaran biaya administrasi',
-        'Surat siap diambil/dikirim'
-      ]
-    },
-    {
-      id: 'kk',
-      title: 'Kartu Keluarga',
-      description: 'Pembuatan dan perubahan Kartu Keluarga',
-      icon: Users,
-      color: 'bg-emerald-500',
-      status: 'online',
-      estimatedTime: '7-14 hari',
-      requirements: [
-        'Surat pengantar RT/RW',
-        'Akta nikah/cerai (jika ada)',
-        'Akta kelahiran seluruh anggota keluarga',
-        'KTP kepala keluarga',
-        'KK lama (jika perubahan)'
-      ],
-      documents: ['Form Permohonan KK', 'Panduan Pengisian'],
-      process: [
-        'Mengisi formulir permohonan',
-        'Melengkapi dokumen persyaratan',
-        'Verifikasi dan validasi data',
-        'Proses pencetakan KK',
-        'Pengambilan KK baru'
-      ]
-    },
-    {
-      id: 'kelahiran',
-      title: 'Akta Kelahiran',
-      description: 'Pengurusan akta kelahiran untuk bayi baru lahir',
-      icon: Baby,
-      color: 'bg-pink-500',
-      status: 'online',
-      estimatedTime: '5-7 hari',
-      requirements: [
-        'Surat keterangan lahir dari bidan/dokter',
-        'KTP kedua orang tua',
-        'KK asli dan fotocopy',
-        'Akta nikah orang tua',
-        'Formulir permohonan'
-      ],
-      documents: ['Form Permohonan Akta Kelahiran', 'Checklist Dokumen'],
-      process: [
-        'Mendaftar secara online',
-        'Upload dokumen yang diperlukan',
-        'Verifikasi data kelahiran',
-        'Proses pencetakan akta',
-        'Akta siap diambil'
-      ]
-    },
-    {
-      id: 'pindah',
-      title: 'Surat Pindah',
-      description: 'Pengurusan surat pindah dan pindah datang',
-      icon: UserPlus,
-      color: 'bg-purple-500',
-      status: 'online',
-      estimatedTime: '3-5 hari',
-      requirements: [
-        'KTP asli dan fotocopy',
-        'KK asli dan fotocopy',
-        'Surat pengantar RT/RW',
-        'Surat keterangan akan pindah',
-        'Formulir permohonan'
-      ],
-      documents: ['Form Surat Pindah', 'Informasi Prosedur'],
-      process: [
-        'Mengajukan permohonan online',
-        'Verifikasi alamat asal dan tujuan',
-        'Koordinasi dengan desa tujuan',
-        'Penerbitan surat pindah',
-        'Selesai proses administrasi'
-      ]
-    },
-    {
-      id: 'usaha',
-      title: 'Surat Keterangan Usaha',
-      description: 'Surat keterangan untuk keperluan usaha dan bisnis',
-      icon: Briefcase,
-      color: 'bg-orange-500',
-      status: 'offline',
-      estimatedTime: '5-7 hari',
-      requirements: [
-        'KTP asli dan fotocopy',
-        'KK asli dan fotocopy',
-        'Surat pengantar RT/RW',
-        'Foto lokasi usaha',
-        'Formulir permohonan'
-      ],
-      documents: ['Form Keterangan Usaha', 'Persyaratan Usaha'],
-      process: [
-        'Mengisi formulir permohonan',
-        'Survey lokasi usaha',
-        'Verifikasi kegiatan usaha',
-        'Penerbitan surat keterangan',
-        'Surat siap diambil'
-      ]
-    },
-    {
-      id: 'sekolah',
-      title: 'Surat Keterangan Sekolah',
-      description: 'Surat keterangan untuk keperluan pendidikan',
-      icon: GraduationCap,
-      color: 'bg-indigo-500',
-      status: 'online',
-      estimatedTime: '2-3 hari',
-      requirements: [
-        'KTP orang tua/wali',
-        'KK asli dan fotocopy',
-        'Akta kelahiran anak',
-        'Surat pengantar RT/RW',
-        'Formulir permohonan'
-      ],
-      documents: ['Form Keterangan Sekolah', 'Info Pendaftaran'],
-      process: [
-        'Pengajuan online',
-        'Verifikasi data siswa',
-        'Konfirmasi sekolah tujuan',
-        'Penerbitan surat keterangan',
-        'Surat siap digunakan'
-      ]
-    }
-  ];
+  // Helper function to get icon based on category or name
+  const getServiceIcon = (name: string, _category: string): LucideIcon => {
+    const nameLower = name.toLowerCase();
+
+    if (nameLower.includes('domisili')) return Home;
+    if (nameLower.includes('keluarga') || nameLower.includes('kk')) return Users;
+    if (nameLower.includes('kelahiran') || nameLower.includes('akta')) return Baby;
+    if (nameLower.includes('pindah')) return UserPlus;
+    if (nameLower.includes('usaha')) return Briefcase;
+    if (nameLower.includes('sekolah') || nameLower.includes('pendidikan')) return GraduationCap;
+
+    return FileText; // Default icon
+  };
+
+  // Helper function to get color based on index
+  const getServiceColor = (index: number): string => {
+    const colors = [
+      'bg-blue-500',
+      'bg-emerald-500',
+      'bg-pink-500',
+      'bg-purple-500',
+      'bg-orange-500',
+      'bg-indigo-500',
+      'bg-teal-500',
+      'bg-rose-500'
+    ];
+    return colors[index % colors.length];
+  };
+
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        setLoading(true);
+        const response = await apiGet('/pubservices');
+
+        if (response.ok) {
+          const data: ServiceData[] = await response.json();
+
+          // Map backend data to display format
+          const mappedServices: ServiceDisplay[] = data.map((service, index) => ({
+            id: service.id,
+            title: service.name,
+            description: service.description,
+            icon: getServiceIcon(service.name, service.category),
+            color: getServiceColor(index),
+            status: service.status === 'active' ? 'online' : 'offline',
+            estimatedTime: service.processing_time,
+            requirements: service.requirements || [],
+            documents: service.templates || []
+          }));
+
+          setServices(mappedServices);
+        }
+      } catch (error) {
+        console.error('Error fetching services:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchServices();
+  }, []);
 
   const faqItems = [
     {
@@ -186,7 +136,7 @@ const AdministrasiPage = () => {
     >
       <div className="py-16">
         <div className="container mx-auto px-4">
-          
+
           {/* Quick Stats */}
           <section className="mb-12">
             <div className="grid md:grid-cols-4 gap-6">
@@ -194,14 +144,16 @@ const AdministrasiPage = () => {
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <FileText className="w-6 h-6 text-blue-600" />
                 </div>
-                <h3 className="text-2xl font-bold text-gray-800">{services.length}</h3>
+                <h3 className="text-2xl font-bold text-gray-800">{loading ? '...' : services.length}</h3>
                 <p className="text-gray-600 text-sm">Layanan Tersedia</p>
               </div>
               <div className="bg-white rounded-xl shadow-lg p-6 text-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                   <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
-                <h3 className="text-2xl font-bold text-gray-800">{services.filter(s => s.status === 'online').length}</h3>
+                <h3 className="text-2xl font-bold text-gray-800">
+                  {loading ? '...' : services.filter(s => s.status === 'online').length}
+                </h3>
                 <p className="text-gray-600 text-sm">Layanan Online</p>
               </div>
               <div className="bg-white rounded-xl shadow-lg p-6 text-center">
@@ -224,39 +176,50 @@ const AdministrasiPage = () => {
           {/* Services Grid */}
           <section className="mb-16">
             <h2 className="text-3xl font-bold text-gray-800 text-center mb-12">Daftar Layanan Administrasi</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.map((service) => (
-                <div
-                  key={service.id}
-                  className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow cursor-pointer"
-                  onClick={() => setSelectedService(service.id)}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`${service.color} p-3 rounded-lg`}>
-                      <service.icon className="w-6 h-6 text-white" />
+
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">Memuat layanan...</p>
+              </div>
+            ) : services.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-600">Belum ada layanan tersedia</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {services.map((service) => (
+                  <div
+                    key={service.id}
+                    className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow cursor-pointer"
+                    onClick={() => setSelectedService(service.id)}
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className={`${service.color} p-3 rounded-lg`}>
+                        <service.icon className="w-6 h-6 text-white" />
+                      </div>
+                      <span className={`px-3 py-1 text-xs rounded-full ${
+                        service.status === 'online'
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-red-100 text-red-600'
+                      }`}>
+                        {service.status}
+                      </span>
                     </div>
-                    <span className={`px-3 py-1 text-xs rounded-full ${
-                      service.status === 'online' 
-                        ? 'bg-green-100 text-green-600' 
-                        : 'bg-red-100 text-red-600'
-                    }`}>
-                      {service.status}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">{service.title}</h3>
-                  <p className="text-gray-600 text-sm mb-4">{service.description}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2 text-sm text-gray-500">
-                      <Clock className="w-4 h-4" />
-                      <span>{service.estimatedTime}</span>
+                    <h3 className="text-xl font-semibold text-gray-800 mb-2">{service.title}</h3>
+                    <p className="text-gray-600 text-sm mb-4">{service.description}</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 text-sm text-gray-500">
+                        <Clock className="w-4 h-4" />
+                        <span>{service.estimatedTime}</span>
+                      </div>
+                      <button className="text-village-green font-medium text-sm hover:text-emerald-700">
+                        Lihat Detail
+                      </button>
                     </div>
-                    <button className="text-village-green font-medium text-sm hover:text-emerald-700">
-                      Lihat Detail
-                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* Service Detail Modal */}
@@ -266,7 +229,7 @@ const AdministrasiPage = () => {
                 {(() => {
                   const service = services.find(s => s.id === selectedService);
                   if (!service) return null;
-                  
+
                   return (
                     <>
                       {/* Modal Header */}
@@ -292,42 +255,41 @@ const AdministrasiPage = () => {
                           <div>
                             <h4 className="text-lg font-semibold text-gray-800 mb-4">Persyaratan</h4>
                             <ul className="space-y-2 mb-6">
-                              {service.requirements.map((req, index) => (
-                                <li key={index} className="flex items-start space-x-2">
-                                  <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                                  <span className="text-gray-600 text-sm">{req}</span>
-                                </li>
-                              ))}
+                              {service.requirements.length > 0 ? (
+                                service.requirements.map((req, index) => (
+                                  <li key={index} className="flex items-start space-x-2">
+                                    <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                                    <span className="text-gray-600 text-sm">{req}</span>
+                                  </li>
+                                ))
+                              ) : (
+                                <li className="text-gray-600 text-sm">Tidak ada persyaratan khusus</li>
+                              )}
                             </ul>
 
                             <h4 className="text-lg font-semibold text-gray-800 mb-4">Dokumen Template</h4>
                             <div className="space-y-2 mb-6">
-                              {service.documents.map((doc, index) => (
-                                <button
-                                  key={index}
-                                  className="flex items-center space-x-2 text-village-green hover:text-emerald-700 text-sm"
-                                >
-                                  <Download className="w-4 h-4" />
-                                  <span>{doc}</span>
-                                </button>
-                              ))}
+                              {service.documents.length > 0 ? (
+                                service.documents.map((doc) => (
+                                  <a
+                                    key={doc.id}
+                                    href={doc.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center space-x-2 text-village-green hover:text-emerald-700 text-sm"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                    <span>{doc.name}</span>
+                                  </a>
+                                ))
+                              ) : (
+                                <p className="text-gray-600 text-sm">Tidak ada template tersedia</p>
+                              )}
                             </div>
                           </div>
 
                           {/* Right Column */}
                           <div>
-                            <h4 className="text-lg font-semibold text-gray-800 mb-4">Alur Proses</h4>
-                            <div className="space-y-3 mb-6">
-                              {service.process.map((step, index) => (
-                                <div key={index} className="flex items-start space-x-3">
-                                  <div className="w-6 h-6 bg-village-green text-white rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                                    {index + 1}
-                                  </div>
-                                  <span className="text-gray-600 text-sm">{step}</span>
-                                </div>
-                              ))}
-                            </div>
-
                             <div className="bg-gray-50 rounded-lg p-4">
                               <div className="flex items-center space-x-2 mb-2">
                                 <Clock className="w-4 h-4 text-gray-500" />

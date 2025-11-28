@@ -1,7 +1,7 @@
 import { Calendar, Eye, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import OptimizedImage from '@/react-app/components/OptimizedImage';
-import { useContentAnimation } from '@/react-app/hooks/useContentAnimation';
+// import OptimizedImage from '@/react-app/components/OptimizedImage'; // DEBUG: Disabled
+// import { useContentAnimation } from '@/react-app/hooks/useContentAnimation'; // DEBUG: Disabled
 import { categoryLabels, getCategoryColor } from '@/react-app/data/beritaData';
 import { useState, useEffect } from 'react';
 import { apiFetch } from '@/react-app/lib/api';
@@ -21,19 +21,10 @@ interface Article {
   published_at: string;
 }
 
-const News = () => {
+const NewsFixed = () => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const { isVisible: headerVisible, elementRef: headerRef } = useContentAnimation();
-  const { isVisible: featuredVisible, elementRef: featuredRef } = useContentAnimation({ delay: 100 });
-
-  // Debug visibility
-  useEffect(() => {
-    console.log('🔍 Header visible:', headerVisible);
-    console.log('🔍 Featured visible:', featuredVisible);
-  }, [headerVisible, featuredVisible]);
 
   useEffect(() => {
     const fetchNews = async () => {
@@ -44,15 +35,10 @@ const News = () => {
           throw new Error('Gagal mengambil data berita.');
         }
         const data = await response.json();
-        console.log('✅ Data articles berhasil di-fetch:', data);
-        console.log('📊 Jumlah artikel:', data.length);
-        if (data.length > 0) {
-          console.log('🖼️ Sample image URL:', data[0].image_url);
-        }
         setArticles(data);
       } catch (err: any) {
         setError(err.message);
-        console.error("❌ Error fetching articles in News.tsx:", err);
+        console.error("Error fetching articles in News.tsx:", err);
       } finally {
         setLoading(false);
       }
@@ -106,7 +92,7 @@ const News = () => {
         <h3 className="text-xl font-semibold text-gray-700">Belum Ada Berita</h3>
         <p className="text-gray-500 mt-2">Saat ini belum ada berita yang dipublikasikan. Silakan cek kembali nanti.</p>
         <Link to="/berita" className="btn-primary px-8 py-3 mx-auto mt-4">
-          <span>Buat Artikel Pertama Anda</span>
+          <span>Lihat Semua Berita</span>
         </Link>
     </div>
   );
@@ -115,10 +101,7 @@ const News = () => {
     <section id="informasi" className="py-16 bg-white">
       <div className="container mx-auto px-4">
         {/* Header */}
-        <div
-          ref={(el) => { if (el) (headerRef as any).current = el; }}
-          className={`text-center mb-12 transition-all duration-500 ${headerVisible ? 'animate-fade-up opacity-100' : 'opacity-100'}`}
-        >
+        <div className="text-center mb-12">
           <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">
             Berita & Informasi
           </h2>
@@ -130,15 +113,12 @@ const News = () => {
         {/* Featured News Section */}
         {loading ? renderSkeleton() : error ? <p className="text-center text-red-500">{error}</p> : (
             articles.length === 0 ? renderEmptyState() : (
-                <div
-                    ref={(el) => { if (el) (featuredRef as any).current = el; }}
-                    className={`grid lg:grid-cols-2 gap-8 mb-12 transition-all duration-500 ${featuredVisible ? 'animate-slide-left opacity-100' : 'opacity-100'}`}
-                >
+                <div className="grid lg:grid-cols-2 gap-8 mb-12">
                     {/* Main Featured Article */}
                     {mainArticle && (
                         <Link to={`/berita/${mainArticle.slug}`} className="relative group cursor-pointer">
                             <div className="relative overflow-hidden rounded-2xl">
-                            <OptimizedImage
+                            <img
                                 src={mainArticle.image_url}
                                 alt={mainArticle.title}
                                 className="w-full h-80 object-cover group-hover:scale-105 transition-transform duration-300"
@@ -167,7 +147,7 @@ const News = () => {
                         <Link key={item.id} to={`/berita/${item.slug}`} className="group cursor-pointer">
                             <div className="flex space-x-4">
                             <div className="relative overflow-hidden rounded-lg w-24 sm:w-28 md:w-32 h-18 sm:h-20 md:h-24 flex-shrink-0">
-                                <OptimizedImage
+                                <img
                                 src={item.image_url}
                                 alt={item.title}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -203,4 +183,4 @@ const News = () => {
   );
 };
 
-export default News;
+export default NewsFixed;

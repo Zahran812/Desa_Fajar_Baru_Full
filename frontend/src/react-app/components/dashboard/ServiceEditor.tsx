@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  Save, X, FileText, Upload, Download, 
-  AlertCircle, Clock, DollarSign, CheckCircle, Plus, Trash2
+  Save, X, FileText, Download, 
+  AlertCircle, Clock, DollarSign, CheckCircle, Plus, Trash2, Link
 } from 'lucide-react';
 
 interface ServiceTemplate {
   id?: number;
   name: string;
-  file_url: string;
+  file_url: string; // URL publik dari server
+  file_object?: File | null; // File baru yang diupload
+  is_new?: boolean;
 }
 
 interface Service {
@@ -24,7 +26,7 @@ interface Service {
 
 interface ServiceEditorProps {
   service?: Service | null;
-  onSave: (service: Service) => Promise<void>;
+  onSave: (serviceData: Service, templateFiles: Record<string, File>) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -42,7 +44,12 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
 
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [newTemplate, setNewTemplate] = useState({ name: '', file_url: '' });
+  
+  // State untuk template yang akan ditambahkan, menyimpan nama dan File object
+  const [newTemplate, setNewTemplate] = useState<{ name: string; file: File | null }>({ name: '', file: null });
+
+  // Ref untuk file input agar bisa di-reset
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (service) {
@@ -52,8 +59,20 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
         templates: service.templates || []
       });
     }
+    // Cleanup Object URLs saat component unmount atau service berubah
+    return () => {
+        if (service && service.templates) {
+            service.templates.forEach(t => {
+                if (t.file_object && t.file_url.startsWith('blob:')) {
+                    URL.revokeObjectURL(t.file_url);
+                }
+            });
+        }
+    }
   }, [service]);
 
+  // ... (categories, validateForm, addRequirement, removeRequirement, updateRequirement tetap sama) ...
+  
   const categories = [
     { value: 'administrasi', label: 'Administrasi Kependudukan', icon: '👥' },
     { value: 'ekonomi', label: 'Ekonomi & Usaha', icon: '💼' },
@@ -86,29 +105,6 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = async () => {
-    if (!validateForm()) {
-      alert('Mohon lengkapi semua field yang diperlukan');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      // Filter out empty requirements
-      const cleanedData = {
-        ...formData,
-        requirements: formData.requirements.filter(r => r.trim()),
-        fee: Number(formData.fee)
-      };
-      await onSave(cleanedData);
-    } catch (error) {
-      console.error('Error saving service:', error);
-      alert('Gagal menyimpan layanan');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const addRequirement = () => {
     setFormData(prev => ({
       ...prev,
@@ -130,21 +126,39 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
     }));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files ? e.target.files[0] : null;
+    setNewTemplate(prev => ({ ...prev, file }));
+  };
+
   const addTemplate = () => {
-    if (!newTemplate.name.trim() || !newTemplate.file_url.trim()) {
-      alert('Nama dan URL template harus diisi');
+    if (!newTemplate.name.trim() || !newTemplate.file) {
+      alert('Nama template dan file harus diisi');
       return;
     }
 
+    // Gunakan URL.createObjectURL untuk pratinjau di frontend sebelum upload
+    const objectUrl = URL.createObjectURL(newTemplate.file);
+    
     setFormData(prev => ({
       ...prev,
       templates: [
         ...(prev.templates || []),
-        { ...newTemplate, id: Date.now() }
+        { 
+            name: newTemplate.name, 
+            file_url: objectUrl, // Sementara pakai Object URL
+            file_object: newTemplate.file, // Simpan objek File untuk dikirim ke backend
+            is_new: true, // Tandai ini sebagai template baru yang perlu diupload
+            id: Date.now() // ID sementara untuk key di list
+        }
       ]
     }));
 
-    setNewTemplate({ name: '', file_url: '' });
+    // Reset form penambahan template
+    setNewTemplate({ name: '', file: null });
+    if (fileInputRef.current) {
+        fileInputRef.current.value = ''; // Reset input file
+    }
   };
 
   const removeTemplate = (id: number | undefined) => {
@@ -152,6 +166,68 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
       ...prev,
       templates: (prev.templates || []).filter(t => t.id !== id)
     }));
+    
+    // Opsional: Hapus Object URL jika itu adalah file yang baru diupload
+    const templateToRemove = formData.templates?.find(t => t.id === id);
+    if (templateToRemove && templateToRemove.file_url.startsWith('blob:')) {
+        URL.revokeObjectURL(templateToRemove.file_url);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!validateForm()) {
+      alert('Mohon lengkapi semua field yang diperlukan');
+      return;
+    }
+
+    setSaving(true);
+    
+    // 1. Filter persyaratan yang kosong dan buat data utama
+    const cleanedData = {
+      ...formData,
+      requirements: formData.requirements.filter(r => r.trim()),
+      fee: Number(formData.fee)
+    };
+
+    // 2. Siapkan data template untuk dikirim ke Controller
+    const templatesDataToBackend: Omit<ServiceTemplate, 'file_object'>[] = [];
+    const templateFilesToSend: Record<string, File> = {};
+    let fileIndex = 0;
+    
+    // Pisahkan data template (name + id/file_url lama) dan file baru
+    formData.templates?.forEach((template) => {
+        // Jika ada file_object, berarti ini adalah file baru yang harus diupload
+        if (template.file_object) {
+            // Data untuk templates_data: hanya nama (dan ID sementara yang tidak perlu di backend)
+            templatesDataToBackend.push({ 
+                id: template.id, 
+                name: template.name, 
+                file_url: template.file_url 
+            }); 
+            
+            // File object dikumpulkan di object terpisah dengan key unik
+            // Key format: 'template_file_0', 'template_file_1', dst.
+            templateFilesToSend[`template_file_${fileIndex}`] = template.file_object;
+            fileIndex++;
+
+        } else if (template.id && template.file_url) {
+            // Template lama yang tidak ada perubahan file, hanya kirim ID dan nama
+            templatesDataToBackend.push({ 
+                id: template.id, 
+                name: template.name, 
+                file_url: template.file_url // Kirim URL lama
+            });
+        }
+    });
+
+    try {
+        await onSave(cleanedData, templateFilesToSend);
+    } catch (error) {
+      console.error('Error saving service:', error);
+      alert('Gagal menyimpan layanan');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const selectedCategory = categories.find(c => c.value === formData.category);
@@ -197,10 +273,11 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Form Area */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Basic Information */}
+            {/* Basic Information (Tetap sama) */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
               <h3 className="text-lg font-semibold text-gray-900">Informasi Dasar</h3>
               
+              {/* Input Nama Layanan */}
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
                   Nama Layanan <span className="text-red-500">*</span>
@@ -222,6 +299,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
                 )}
               </div>
 
+              {/* Input Deskripsi Layanan */}
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
                   Deskripsi Layanan <span className="text-red-500">*</span>
@@ -244,7 +322,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
               </div>
             </div>
 
-            {/* Requirements */}
+            {/* Requirements (Tetap sama) */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -291,7 +369,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
               )}
             </div>
 
-            {/* Processing Details */}
+            {/* Processing Details (Tetap sama) */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Detail Proses</h3>
               
@@ -335,14 +413,14 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
               </div>
             </div>
 
-            {/* Templates/Documents */}
+            {/* Templates/Documents (REVISI) */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 <Download className="w-5 h-5 inline mr-2" />
                 Template & Berkas
               </h3>
               <p className="text-sm text-gray-600 mb-4">
-                Tambahkan template formulir atau berkas yang dapat diunduh oleh pengguna
+                Upload template formulir atau berkas yang dapat diunduh oleh pengguna.
               </p>
 
               {/* Current Templates */}
@@ -353,13 +431,33 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
                       <div className="flex items-center space-x-3">
                         <FileText className="w-5 h-5 text-blue-600" />
                         <div>
-                          <p className="font-medium text-gray-900">{template.name}</p>
-                          <p className="text-xs text-gray-500">{template.file_url}</p>
+                          <p className="font-medium text-gray-900">
+                            {template.name}
+                            {template.file_object && (
+                                <span className="ml-2 px-2 py-0.5 text-xs font-semibold text-emerald-700 bg-emerald-100 rounded-full">
+                                    {service ? 'Baru' : 'Siap Upload'}
+                                </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-gray-500 flex items-center">
+                            {template.file_object ? (
+                                <>
+                                    <FileText className="w-3 h-3 mr-1 text-gray-500" />
+                                    {template.file_object.name} ({Math.round(template.file_object.size / 1024)} KB)
+                                </>
+                            ) : (
+                                <>
+                                    <Link className="w-3 h-3 mr-1 text-gray-500" />
+                                    {template.file_url.split('/').pop()}
+                                </>
+                            )}
+                          </p>
                         </div>
                       </div>
                       <button
                         onClick={() => removeTemplate(template.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                        title="Hapus"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -368,9 +466,12 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
                 </div>
               )}
 
-              {/* Add New Template */}
+              {/* Add New Template Form (REVISI) */}
               <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div>
+                  <label className="block text-xs font-semibold text-blue-800 mb-1">
+                    Nama Template
+                  </label>
                   <input
                     type="text"
                     value={newTemplate.name}
@@ -380,12 +481,14 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
                   />
                 </div>
                 <div>
+                    <label className="block text-xs font-semibold text-blue-800 mb-1">
+                        Pilih File (.pdf, .doc, .zip dll.)
+                    </label>
                   <input
-                    type="text"
-                    value={newTemplate.file_url}
-                    onChange={(e) => setNewTemplate(prev => ({ ...prev, file_url: e.target.value }))}
-                    placeholder="URL file template (https://...)"
-                    className="w-full px-4 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
                   />
                 </div>
                 <button
@@ -393,19 +496,20 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
                   className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Tambah Template</span>
+                  <span>Tambah Template ke Daftar</span>
                 </button>
-                <p className="text-xs text-blue-700">
-                  <Upload className="w-3 h-3 inline mr-1" />
-                  Untuk produksi, upload file ke server/CDN terlebih dahulu
-                </p>
+                {newTemplate.file && (
+                    <p className="text-xs text-blue-700">
+                        File terpilih: **{newTemplate.file.name}**
+                    </p>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Sidebar */}
+          {/* Sidebar (Tetap sama) */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Category */}
+            {/* Category (Tetap sama) */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Kategori Layanan</h3>
               
@@ -438,7 +542,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
               </div>
             </div>
 
-            {/* Status */}
+            {/* Status (Tetap sama) */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Status Layanan</h3>
               
@@ -483,7 +587,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
               </div>
             </div>
 
-            {/* Preview Card */}
+            {/* Preview Card (Tetap sama) */}
             <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-6">
               <h3 className="text-lg font-semibold text-blue-900 mb-4">
                 👁️ Preview Layanan
@@ -522,7 +626,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
               </div>
             </div>
 
-            {/* Tips */}
+            {/* Tips (Tetap sama) */}
             <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl border border-yellow-200 p-6">
               <h3 className="font-semibold text-yellow-900 mb-3">
                 💡 Tips
