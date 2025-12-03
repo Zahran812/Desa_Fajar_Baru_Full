@@ -11,13 +11,13 @@ class Service extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 
-        'description', 
-        'requirements', 
-        'processing_time', 
-        'fee', 
-        'status', 
-        'category'
+        'name',
+        'description',
+        'requirements',
+        'processing_time',
+        'fee',
+        'status',
+        'category_id',
     ];
 
     // Mengubah requirements dari JSON string menjadi array saat diakses
@@ -32,5 +32,13 @@ class Service extends Model
     public function templates(): HasMany
     {
         return $this->hasMany(ServiceTemplate::class);
+    }
+
+    /**
+     * Relasi ke kategori
+     */
+    public function category()
+    {
+        return $this->belongsTo(Category::class);
     }
 }

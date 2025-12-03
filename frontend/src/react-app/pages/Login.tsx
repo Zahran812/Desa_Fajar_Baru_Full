@@ -117,6 +117,10 @@ const Login = () => {
           console.log('➡️ Redirecting to /dashboard/dusun');
           window.location.href = '/dashboard/dusun';
           break;
+        case 'kades':
+          console.log('➡️ Redirecting to /dashboard/kades');
+          window.location.href = '/dashboard/kades';
+          break;
         case 'citizen':
           console.log('➡️ Redirecting to /dashboard/citizen');
           window.location.href = '/dashboard/citizen';

@@ -21,6 +21,13 @@ interface ServiceTemplate {
   file_url: string;
 }
 
+interface Category {
+  id: number;
+  name: string;
+  description: string;
+  icon?: string;
+}
+
 interface ServiceData {
   id: number;
   name: string;
@@ -29,8 +36,9 @@ interface ServiceData {
   processing_time: string;
   fee: number;
   status: string;
-  category: string;
-  templates: ServiceTemplate[];
+  category_id: number;
+  category: Category;
+  templates?: ServiceTemplate[];
 }
 
 interface ServiceDisplay extends ServiceData {
@@ -89,28 +97,42 @@ const Services = () => {
 
         console.log('Response status:', response.status);
 
-        if (response.ok) {
-          const data: ServiceData[] = await response.json();
-          console.log('Services data received:', data);
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Failed to fetch services. Status:', response.status);
+          console.error('Response:', errorText);
+          setError(`Failed to fetch services. Status: ${response.status}`);
+          return;
+        }
 
-          // Map API data to display format with icons and colors
-          const mappedServices: ServiceDisplay[] = data.map((service, index) => ({
-            ...service,
-            icon: getServiceIcon(service.name, service.category),
-            color: getServiceColor(index)
-          }));
+        const data: ServiceData[] = await response.json();
+        console.log('Services data received:', data);
 
-          console.log('Mapped services:', mappedServices);
-          setServices(mappedServices);
+        // Validasi data
+        if (!Array.isArray(data)) {
+          console.error('Data bukan array:', data);
+          setError('Invalid data format');
+          return;
+        }
 
-          // Set first service as selected by default
-          if (mappedServices.length > 0) {
-            setSelectedService(mappedServices[0].id);
-          }
-        } else {
-          const errorMsg = `Failed to fetch services. Status: ${response.status}`;
-          console.error(errorMsg);
-          setError(errorMsg);
+        // Filter only active services with category
+        const validServices = data.filter(service =>
+          service.category && service.category.id && service.status === 'active'
+        );
+
+        // Map API data to display format with icons and colors
+        const mappedServices: ServiceDisplay[] = validServices.map((service, index) => ({
+          ...service,
+          icon: getServiceIcon(service.name, service.category.name),
+          color: getServiceColor(index)
+        }));
+
+        console.log('Mapped services:', mappedServices);
+        setServices(mappedServices);
+
+        // Set first service as selected by default
+        if (mappedServices.length > 0) {
+          setSelectedService(mappedServices[0].id);
         }
       } catch (err: any) {
         const errorMsg = err?.message || 'Error fetching services';

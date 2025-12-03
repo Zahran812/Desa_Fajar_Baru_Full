@@ -68,7 +68,7 @@ const Header = () => {
       hasDropdown: false
     },
     { 
-      name: 'Profil Desa', 
+      name: 'Profil', 
       href: '/profil', 
       icon: User,
       hasDropdown: true,
@@ -95,7 +95,6 @@ const Header = () => {
       hasDropdown: true,
       submenu: [
         { name: 'APB Desa', href: '/transparansi/apb' },
-        { name: 'IDM', href: '/transparansi/idm' },
         { name: 'Bansos', href: '/transparansi/bansos' },
         { name: 'Laporan Pembangunan', href: '/transparansi/pembangunan' },
         { name: 'Statistik', href: '/transparansi/statistik' }
@@ -164,7 +163,7 @@ const Header = () => {
                 
                 {/* Logo Section */}
                 <Link className="flex items-center space-x-2 sm:space-x-3 group" to="/">
-                  <div className="relative w-8 h-8 sm:w-9 sm:h-9 lg:w-11 lg:h-11 flex-shrink-0">
+                  <div className="relative w-7 h-7 sm:w-8 sm:h-8 lg:w-9 lg:h-9 flex-shrink-0">
                     <img 
                       src="https://mocha-cdn.com/0199c514-1ce8-7384-a2ba-f3a333c09788/LrSjPPUnIW.png" 
                       alt="Logo Desa Fajar Baru" 
@@ -172,10 +171,10 @@ const Header = () => {
                     />
                   </div>
                   <div className="block min-w-0 flex-1">
-                    <h1 className="font-bold text-xs sm:text-sm lg:text-base text-gray-800 group-hover:text-emerald-600 transition-colors duration-300 leading-tight truncate">
+                    <h1 className="font-bold text-[11px] sm:text-[12px] lg:text-sm text-gray-800 group-hover:text-emerald-600 transition-colors duration-300 leading-tight truncate">
                       Desa Fajar Baru
                     </h1>
-                    <p className="text-[10px] sm:text-xs lg:text-sm text-gray-600 leading-tight truncate">
+                    <p className="text-[9px] sm:text-[10px] lg:text-[11px] text-gray-600 leading-tight truncate">
                       Jati Agung, Lampung Selatan
                     </p>
                   </div>

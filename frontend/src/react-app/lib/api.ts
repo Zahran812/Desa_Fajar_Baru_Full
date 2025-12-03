@@ -42,3 +42,7 @@ export function apiPost(path: string, body: any, init: RequestInit = {}) {
 export function apiPut(path: string, body: any, init: RequestInit = {}) {
   return apiFetch(path, { ...init, method: "PUT", body });
 }
+
+export function apiDelete(path: string, init: RequestInit = {}) {
+  return apiFetch(path, { ...init, method: "DELETE" });
+}

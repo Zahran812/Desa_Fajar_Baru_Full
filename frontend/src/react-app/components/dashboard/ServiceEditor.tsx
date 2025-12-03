@@ -1,8 +1,39 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Save, X, FileText, Download, 
-  AlertCircle, Clock, DollarSign, CheckCircle, Plus, Trash2, Link
+import {
+  Save, X, FileText, Download,
+  AlertCircle, Clock, DollarSign, CheckCircle, Plus, Trash2, Link, ChevronDown,
+  Briefcase, Users, Home, School, Baby, FileCheck, ClipboardList, Building2, Stamp, LucideIcon, Pencil
 } from 'lucide-react';
+import { apiGet, apiPost, apiPut, apiDelete } from '@/react-app/lib/api';
+
+// Icon mapping untuk kategori surat desa
+const CATEGORY_ICONS: Record<string, { icon: LucideIcon; label: string }> = {
+  FileText: { icon: FileText, label: 'Dokumen Umum' },
+  Briefcase: { icon: Briefcase, label: 'Usaha' },
+  Users: { icon: Users, label: 'Kependudukan' },
+  Home: { icon: Home, label: 'Domisili' },
+  School: { icon: School, label: 'Pendidikan' },
+  Baby: { icon: Baby, label: 'Kelahiran' },
+  FileCheck: { icon: FileCheck, label: 'Keterangan' },
+  ClipboardList: { icon: ClipboardList, label: 'Pernyataan' },
+  Building2: { icon: Building2, label: 'Bangunan' },
+  Stamp: { icon: Stamp, label: 'Legalisir' },
+};
+
+// Helper function untuk render icon dari string
+export const getCategoryIcon = (iconName?: string) => {
+  if (!iconName || !CATEGORY_ICONS[iconName]) {
+    return FileText; // Default icon
+  }
+  return CATEGORY_ICONS[iconName].icon;
+};
+
+interface Category {
+  id: number;
+  name: string;
+  description: string;
+  icon?: string; // Add icon property to category if needed
+}
 
 interface ServiceTemplate {
   id?: number;
@@ -20,7 +51,8 @@ interface Service {
   processing_time: string;
   fee: number;
   status: string;
-  category: string;
+  category_id: number; // Use category_id for relation
+  category?: Category; // Optional, for displaying purposes
   templates?: ServiceTemplate[];
 }
 
@@ -30,6 +62,7 @@ interface ServiceEditorProps {
   onCancel: () => void;
 }
 
+
 const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
   const [formData, setFormData] = useState<Service>({
     name: '',
@@ -38,12 +71,21 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
     processing_time: '',
     fee: 0,
     status: 'active',
-    category: 'administrasi',
+    category_id: 0, // Will be set after fetching categories
     templates: []
   });
 
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // State for Category Management
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [newCategoryIcon, setNewCategoryIcon] = useState('');
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [isManageCategoryOpen, setIsManageCategoryOpen] = useState(false);
   
   // State untuk template yang akan ditambahkan, menyimpan nama dan File object
   const [newTemplate, setNewTemplate] = useState<{ name: string; file: File | null }>({ name: '', file: null });
@@ -51,13 +93,57 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
   // Ref untuk file input agar bisa di-reset
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getAuthHeaders = (): HeadersInit => {
+    const token = localStorage.getItem('auth_token');
+    const headers = new Headers();
+    if (token) {
+      headers.append('Authorization', `Bearer ${token}`);
+    }
+    return headers;
+  };
+
+  const refetchCategories = async () => {
+    setLoadingCategories(true);
+    try {
+      const response = await apiGet('/categories', { headers: getAuthHeaders() });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to fetch categories. Server responded with:", errorText);
+        throw new Error('Failed to fetch categories');
+      }
+      const data = await response.json();
+      console.log('Fetched categories:', data);
+      setCategories(data);
+      // Set default category_id on initial load (when it's 0)
+      setFormData(prev => {
+        if (data.length > 0 && prev.category_id === 0) {
+          console.log('Setting default category_id to:', data[0].id);
+          return { ...prev, category_id: data[0].id };
+        }
+        return prev;
+      });
+    } catch (error) {
+      console.error('Error refetching categories:', error);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
+  useEffect(() => {
+    refetchCategories();
+  }, []); // Initial fetch
+
   useEffect(() => {
     if (service) {
+      console.log('ServiceEditor received service:', service);
+      console.log('Service category_id:', service.category_id);
       setFormData({
         ...service,
         requirements: service.requirements.length > 0 ? service.requirements : [''],
         templates: service.templates || []
       });
+    } else {
+      console.log('ServiceEditor in CREATE mode (no service prop)');
     }
     // Cleanup Object URLs saat component unmount atau service berubah
     return () => {
@@ -71,16 +157,90 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
     }
   }, [service]);
 
-  // ... (categories, validateForm, addRequirement, removeRequirement, updateRequirement tetap sama) ...
-  
-  const categories = [
-    { value: 'administrasi', label: 'Administrasi Kependudukan', icon: '👥' },
-    { value: 'ekonomi', label: 'Ekonomi & Usaha', icon: '💼' },
-    { value: 'tanah', label: 'Pertanahan', icon: '🏡' },
-    { value: 'sosial', label: 'Sosial & Kesejahteraan', icon: '🤝' },
-    { value: 'perizinan', label: 'Perizinan', icon: '📋' },
-    { value: 'lainnya', label: 'Lainnya', icon: '📄' }
-  ];
+  // Category CRUD Handlers
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) {
+        alert('Nama kategori tidak boleh kosong.');
+        return;
+    }
+    try {
+        const response = await apiPost('/categories', {
+            name: newCategoryName,
+            description: newCategoryDescription,
+            icon: newCategoryIcon
+        }, { headers: getAuthHeaders() });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Status:', response.status);
+            console.error('Response:', errorText);
+            try {
+                const errorData = JSON.parse(errorText);
+                throw new Error(errorData.message || 'Gagal menambahkan kategori');
+            } catch {
+                throw new Error(`Server error (${response.status}): ${errorText.substring(0, 200)}`);
+            }
+        }
+        const newCategory = await response.json();
+        alert(`Kategori "${newCategory.name}" berhasil ditambahkan!`);
+        setNewCategoryName('');
+        setNewCategoryDescription('');
+        setNewCategoryIcon('');
+        refetchCategories();
+    } catch (error: any) {
+        alert(error.message);
+        console.error('Error adding category:', error);
+    }
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategory || !editingCategory.name.trim()) {
+        alert('Nama kategori tidak boleh kosong.');
+        return;
+    }
+    try {
+        const response = await apiPut(`/categories/${editingCategory.id}`, {
+            name: editingCategory.name,
+            description: editingCategory.description,
+            icon: editingCategory.icon
+        }, { headers: getAuthHeaders() });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Status:', response.status);
+            console.error('Response:', errorText);
+            try {
+                const errorData = JSON.parse(errorText);
+                throw new Error(errorData.message || 'Gagal mengupdate kategori');
+            } catch {
+                throw new Error(`Server error (${response.status}): ${errorText.substring(0, 200)}`);
+            }
+        }
+        const updatedCategory = await response.json();
+        alert(`Kategori "${updatedCategory.name}" berhasil diupdate!`);
+        setEditingCategory(null);
+        refetchCategories();
+    } catch (error: any) {
+        alert(error.message);
+        console.error('Error updating category:', error);
+    }
+  };
+
+  const handleDeleteCategory = async (id: number) => {
+    if (!confirm('Apakah Anda yakin ingin menghapus kategori ini? Layanan yang menggunakan kategori ini mungkin akan terpengaruh.')) {
+        return;
+    }
+    try {
+        const response = await apiDelete(`/categories/${id}`, { headers: getAuthHeaders() });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Gagal menghapus kategori');
+        }
+        alert('Kategori berhasil dihapus!');
+        refetchCategories();
+    } catch (error: any) {
+        alert(error.message);
+        console.error('Error deleting category:', error);
+    }
+  };
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -181,13 +341,18 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
     }
 
     setSaving(true);
-    
+
     // 1. Filter persyaratan yang kosong dan buat data utama
     const cleanedData = {
       ...formData,
       requirements: formData.requirements.filter(r => r.trim()),
       fee: Number(formData.fee)
     };
+
+    console.log('=== ServiceEditor handleSave ===');
+    console.log('FormData:', formData);
+    console.log('CleanedData:', cleanedData);
+    console.log('category_id:', cleanedData.category_id);
 
     // 2. Siapkan data template untuk dikirim ke Controller
     const templatesDataToBackend: Omit<ServiceTemplate, 'file_object'>[] = [];
@@ -230,7 +395,7 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
     }
   };
 
-  const selectedCategory = categories.find(c => c.value === formData.category);
+  const selectedCategory = categories.find(c => c.id === formData.category_id);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -509,37 +674,159 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
 
           {/* Sidebar (Tetap sama) */}
           <div className="lg:col-span-1 space-y-6">
-            {/* Category (Tetap sama) */}
+            {/* Category Selection */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Kategori Layanan</h3>
-              
-              <div className="space-y-2">
-                {categories.map((cat) => (
-                  <label 
-                    key={cat.value} 
-                    className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                      formData.category === cat.value 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-200 hover:border-gray-300'
+
+              {loadingCategories ? (
+                <p>Memuat kategori...</p>
+              ) : (
+                <div className="space-y-2 max-h-[340px] overflow-y-auto pr-2">
+                  {categories.map((cat) => (
+                    <label
+                      key={cat.id}
+                      className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                        formData.category_id === cat.id
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="radio"
+                          name="category_id"
+                          value={cat.id}
+                          checked={formData.category_id === cat.id}
+                          onChange={(e) => setFormData(prev => ({ ...prev, category_id: Number(e.target.value) }))}
+                          className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        />
+                        {cat.icon && (() => {
+                          const IconComponent = getCategoryIcon(cat.icon);
+                          return <IconComponent className="w-5 h-5 text-blue-600" />;
+                        })()}
+                        <span className="text-sm font-medium text-gray-700">
+                          {cat.name}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Category Management Section */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                <button
+                  onClick={() => setIsManageCategoryOpen(!isManageCategoryOpen)}
+                  className="w-full flex items-center justify-between p-6 hover:bg-gray-50 transition-colors"
+                >
+                  <h3 className="font-semibold text-gray-900">Kelola Kategori</h3>
+                  <ChevronDown
+                    className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${
+                      isManageCategoryOpen ? 'transform rotate-180' : ''
                     }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="radio"
-                        name="category"
-                        value={cat.value}
-                        checked={formData.category === cat.value}
-                        onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-xl">{cat.icon}</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        {cat.label}
-                      </span>
+                  />
+                </button>
+
+                {isManageCategoryOpen && (
+                  <div className="px-6 pb-6 border-t border-gray-200">
+                    {/* Add/Edit Category Form */}
+                    <div className="space-y-3 mb-4 mt-4">
+                    <input 
+                        type="text" 
+                        placeholder="Nama Kategori Baru" 
+                        value={editingCategory?.name || newCategoryName}
+                        onChange={(e) => editingCategory ? setEditingCategory(prev => prev ? {...prev, name: e.target.value} : null) : setNewCategoryName(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                    <textarea 
+                        placeholder="Deskripsi Kategori (opsional)"
+                        value={editingCategory?.description || newCategoryDescription}
+                        onChange={(e) => editingCategory ? setEditingCategory(prev => prev ? {...prev, description: e.target.value} : null) : setNewCategoryDescription(e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md resize-none"
+                    />
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        Pilih Ikon
+                      </label>
+                      <div className="grid grid-cols-5 gap-2">
+                        {Object.entries(CATEGORY_ICONS).map(([iconKey, { icon: IconComponent, label }]) => {
+                          const isSelected = (editingCategory?.icon || newCategoryIcon) === iconKey;
+                          return (
+                            <button
+                              key={iconKey}
+                              type="button"
+                              onClick={() => {
+                                if (editingCategory) {
+                                  setEditingCategory(prev => prev ? {...prev, icon: iconKey} : null);
+                                } else {
+                                  setNewCategoryIcon(iconKey);
+                                }
+                              }}
+                              className={`p-3 rounded-lg border-2 transition-all hover:scale-105 ${
+                                isSelected
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-blue-300'
+                              }`}
+                              title={label}
+                            >
+                              <IconComponent className={`w-5 h-5 mx-auto ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </label>
-                ))}
-              </div>
+                    <div className="flex space-x-2">
+                        <button 
+                            onClick={editingCategory ? handleUpdateCategory : handleAddCategory}
+                            className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
+                        >
+                            {editingCategory ? 'Update Kategori' : 'Tambah Kategori'}
+                        </button>
+                        {editingCategory && (
+                            <button 
+                                onClick={() => setEditingCategory(null)}
+                                className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition-colors"
+                            >
+                                Batal
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                    {/* List of Categories */}
+                    <ul className="space-y-2 max-h-[280px] overflow-y-auto pr-2">
+                        {categories.filter(cat => cat.id !== 0).map(cat => (
+                            <li key={cat.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md border border-gray-200">
+                                <div className="flex items-center space-x-2">
+                                    {cat.icon && (() => {
+                                      const IconComponent = getCategoryIcon(cat.icon);
+                                      return <IconComponent className="w-4 h-4 text-gray-600" />;
+                                    })()}
+                                    <span className="text-sm font-medium">{cat.name}</span>
+                                </div>
+                                <div className="flex space-x-2">
+                                    <button
+                                        onClick={() => setEditingCategory(cat)}
+                                        className="p-1 text-blue-600 hover:bg-blue-100 rounded-md"
+                                        title="Edit Kategori"
+                                    >
+                                        <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteCategory(cat.id)}
+                                        className="p-1 text-red-600 hover:bg-red-100 rounded-md"
+                                        title="Hapus Kategori"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
             </div>
 
             {/* Status (Tetap sama) */}

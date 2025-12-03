@@ -9,6 +9,7 @@ use App\Http\Controllers\AgendaController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\RequestController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\Dashboard\ArticleController as DashboardArticleController;
@@ -29,6 +30,7 @@ Route::get('requests/document/{id}/download', [RequestController::class, 'downlo
 // --- Rute Publik untuk Berita/Artikel (Tanpa otentikasi) ---
 Route::get('/articles', [ArticleController::class, 'index']);
 Route::get('/articles/{slug}', [ArticleController::class, 'show']);
+Route::get('/article-categories', [ArticleController::class, 'getUniqueCategories']);
 
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -47,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/gallery/{id}', [GalleryController::class, 'destroy']); // Untuk delete gallery
 
     Route::apiResource('services', ServiceController::class);
+    Route::apiResource('categories', CategoryController::class);
     Route::get('admin/services', [ServiceController::class, 'indexAdmin']);
 
 

@@ -1,5 +1,31 @@
 import PageLayout from '@/react-app/components/PageLayout';
-import { Award, Heart, Building2, Users, Briefcase, TrendingUp, UsersRound, Shield, UserCheck, Baby, Home } from 'lucide-react';
+import { Award, Heart, Building2, Users, Briefcase, UsersRound, Shield, Baby, Home } from 'lucide-react';
+
+const formatUrl = (folder: string, file: string) => {
+  // URLs should be relative to the public folder
+  return `${import.meta.env.BASE_URL}pejabat-dan-struktural/${folder}/${file}`;
+};
+const kepalaDusunList = [
+  { name: 'Suryadi', dusun: 'Dusun 1' },
+  { name: 'Junaidi, S.H', dusun: 'Dusun 2A' },
+  { name: 'Ahmad Isnadi', dusun: 'Dusun 2B' },
+  { name: 'Suroso Waris', dusun: 'Dusun 3A' },
+  { name: 'Paino', dusun: 'Dusun 3B' },
+  { name: 'Mujiyo', dusun: 'Dusun 4' },
+  { name: 'Apriyanto', dusun: 'Dusun 5' },
+  { name: 'Sumber Hidayat', dusun: 'Dusun 6' }
+];
+
+const kepalaSeksiList = [
+  { name: 'Yunani', role: 'Kasi Pemerintahan', photo: 'yunani-kasi-pemerintahan.jpeg' },
+  { name: 'Ponisih', role: 'Kasi Pelayanan', photo: 'ponisih-kasi-pelayanan.jpg' },
+  { name: 'Hadi Johan', role: 'Kasi Kesejahteraan', photo: 'hadi-johan-kasi-kesejahteraan.jpeg' },
+  { name: 'Tri Wahita Hanuji', role: 'Kaur Perencanaan', photo: 'tri-wahita-hanuji-kaur-perencanaan.jpeg' },
+  { name: 'Vivi Atika Pertiwi, A.Md.Kom.', role: 'Kaur Keuangan', photo: 'rahmani-diah-permatasari-operator-desa.jpeg' },
+  { name: 'Bintari Mayasari, A.Md', role: 'Kasi TU dan Umum', photo: 'bintari-mayasari-kaur-tu-dan-umum.jpeg' },
+  { name: 'Hermin Susiloningsih', role: 'Staff Perpustakaan', photo: 'hermin-susiloninsih-pengurus-perpustakaan.jpeg' },
+  { name: 'Rahmani Diah Permatasari, S.Pd', role: 'Operator Desa', photo: 'rahmani-diah-permatasari-operator-desa.jpeg' }
+];
 
 const PejabatStruktural = () => {
   // Fungsi Pemerintahan Data
@@ -54,7 +80,6 @@ const PejabatStruktural = () => {
     >
       <div className="py-8 md:py-16">
         <div className="container mx-auto px-4">
-          
 
           {/* PEMERINTAH DESA */}
           <section id="pemerintah-desa" className="mb-16 md:mb-20 scroll-mt-24">
@@ -119,8 +144,10 @@ const PejabatStruktural = () => {
                 </div>
               </div>
             </div>
+          </section>
 
-            {/* Tim Perangkat Desa */}
+          {/* Tim Perangkat Desa */}
+          <section id="tim-perangkat-desa" className="mb-16 md:mb-20 scroll-mt-24">
             <div className="bg-gradient-to-br from-white via-emerald-50/50 to-blue-50/30 rounded-2xl md:rounded-3xl lg:rounded-[2rem] p-4 md:p-6 lg:p-8 shadow-xl border border-emerald-100 mt-12 md:mt-16">
               <div className="text-center mb-6 md:mb-8">
                 <h3 className="text-xl md:text-2xl lg:text-3xl xl:text-4xl font-bold text-gray-800 mb-3 md:mb-4">Tim Perangkat Desa</h3>
@@ -129,14 +156,17 @@ const PejabatStruktural = () => {
               </div>
 
               <div className="space-y-4 md:space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0">
-                {/* Sekretaris Desa & Kepala Seksi */}
                 <div className="space-y-4 md:space-y-6">
-                  {/* Sekretaris Desa */}
                   <div className="bg-white rounded-xl md:rounded-2xl shadow-lg p-4 md:p-5 hover-lift hover-glow border border-emerald-100/50">
                     <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-3 sm:space-y-0 sm:space-x-3 md:space-x-4">
                       <div className="relative flex-shrink-0">
                         <div className="w-20 h-24 sm:w-22 sm:h-26 md:w-24 md:h-30 lg:w-26 lg:h-32 rounded-lg md:rounded-xl overflow-hidden shadow-lg border-2 border-white bg-gray-100">
-                          
+                          <img
+                            src={formatUrl('tim-perangkat-desa', 'solichen-sekretaris-desa.jpg')}
+                            alt="Solichen, S.Sos - Sekretaris Desa"
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
                         </div>
                         <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2">
                           <div className="bg-gradient-to-r from-emerald-600 to-blue-600 text-white px-2 py-1 rounded-md md:rounded-lg shadow-lg">
@@ -144,7 +174,6 @@ const PejabatStruktural = () => {
                           </div>
                         </div>
                       </div>
-
                       <div className="flex-1 text-center sm:text-left min-w-0">
                         <h4 className="text-base md:text-lg lg:text-xl font-bold text-gray-800 mb-1 truncate">Solichen, S.Sos</h4>
                         <p className="text-emerald-600 font-semibold text-sm md:text-base mb-1">Sekretaris Desa</p>
@@ -155,147 +184,50 @@ const PejabatStruktural = () => {
                     </div>
                   </div>
 
-                  {/* Kepala Seksi */}
-                  <div className="bg-white rounded-xl md:rounded-2xl shadow-lg p-4 md:p-5 hover-lift hover-glow border border-emerald-100/50">
-                  <div className="text-center mb-3 md:mb-4">
-                    <h4 className="text-base md:text-lg lg:text-xl font-bold text-gray-800 mb-1">Kepala Seksi</h4>
-                    <p className="text-gray-600 text-xs md:text-sm">Struktur kepemimpinan bidang</p>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="bg-emerald-50 rounded-lg p-2 md:p-3 border-l-3 border-emerald-500 hover:bg-emerald-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-emerald-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Building2 className="w-3 h-3 text-emerald-600" />
+                  <div className="space-y-3">
+                    {kepalaSeksiList.map((member) => (
+                      <div
+                        key={member.name}
+                        className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
+                      >
+                        <div className="w-16 h-16 rounded-xl overflow-hidden border border-emerald-100 bg-gray-50">
+                          <img
+                            src={member.photo ? formatUrl('tim-perangkat-desa', member.photo) : undefined}
+                            alt={member.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Yunani</h5>
-                          <p className="text-emerald-600 text-xs font-medium leading-tight">Kepala Seksi Pemerintahan</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-emerald-50 rounded-lg p-2 md:p-3 border-l-3 border-emerald-500 hover:bg-emerald-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-emerald-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Users className="w-3 h-3 text-emerald-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Ponisih</h5>
-                          <p className="text-emerald-600 text-xs font-medium leading-tight">Kasi Pelayanan</p>
+                        <div>
+                          <p className="font-semibold text-gray-900 text-sm md:text-base">{member.name}</p>
+                          <p className="text-xs text-gray-500">{member.role}</p>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="bg-blue-50 rounded-lg p-2 md:p-3 border-l-3 border-blue-500 hover:bg-blue-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-blue-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Heart className="w-3 h-3 text-blue-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Hadi Johan</h5>
-                          <p className="text-blue-600 text-xs font-medium leading-tight">Kepala Seksi Kesejahteraan</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-teal-50 rounded-lg p-2 md:p-3 border-l-3 border-teal-500 hover:bg-teal-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-teal-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <TrendingUp className="w-3 h-3 text-teal-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Tri Wahita Hanuji</h5>
-                          <p className="text-teal-600 text-xs font-medium leading-tight">Kaur Perencanaan</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-cyan-50 rounded-lg p-2 md:p-3 border-l-3 border-cyan-500 hover:bg-cyan-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-cyan-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Briefcase className="w-3 h-3 text-cyan-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Vivi Atika Pertiwi, A.Md.Kom.</h5>
-                          <p className="text-cyan-600 text-xs font-medium leading-tight">Kaur Keuangan</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-blue-50 rounded-lg p-2 md:p-3 border-l-3 border-blue-500 hover:bg-blue-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-blue-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Building2 className="w-3 h-3 text-blue-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Bintari Mayasari, A.Md</h5>
-                          <p className="text-blue-600 text-xs font-medium leading-tight">Kasi TU dan Umum</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-purple-50 rounded-lg p-2 md:p-3 border-l-3 border-purple-500 hover:bg-purple-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-purple-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Award className="w-3 h-3 text-purple-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Hermin Susiloningsih</h5>
-                          <p className="text-purple-600 text-xs font-medium leading-tight">Staff Perpustakaan</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-indigo-50 rounded-lg p-2 md:p-3 border-l-3 border-indigo-500 hover:bg-indigo-100 transition-colors">
-                      <div className="flex items-center space-x-2 md:space-x-3">
-                        <div className="w-6 h-6 md:w-7 md:h-7 bg-indigo-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                          <UserCheck className="w-3 h-3 text-indigo-600" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">Rahmani Diah Permatasari, S.Pd</h5>
-                          <p className="text-indigo-600 text-xs font-medium leading-tight">Operator Desa</p>
-                        </div>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-
-                {/* Kepala Dusun */}
                 <div className="bg-white rounded-xl md:rounded-2xl shadow-lg p-4 md:p-5 hover-lift hover-glow border border-emerald-100/50">
                   <div className="text-center mb-3 md:mb-4">
                     <h4 className="text-base md:text-lg lg:text-xl font-bold text-gray-800 mb-1">Kepala Dusun</h4>
                     <p className="text-gray-600 text-xs md:text-sm">Pemimpin wilayah dusun</p>
                   </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    {[
-                      {name: 'Suryadi', dusun: 'Dusun 1'},
-                      {name: 'Junaidi, S.H', dusun: 'Dusun 2A'},
-                      {name: 'Ahmad Isnadi', dusun: 'Dusun 2B'},
-                      {name: 'Suroso Waris', dusun: 'Dusun 3A'},
-                      {name: 'Paino', dusun: 'Dusun 3B'},
-                      {name: 'Mujiyo', dusun: 'Dusun 4'},
-                      {name: 'Apriyanto', dusun: 'Dusun 5'}
-                    ].map((item, idx) => (
-                      <div key={idx} className="bg-emerald-50 rounded-lg p-2 md:p-3 border-l-3 border-emerald-500 hover:bg-emerald-100 transition-colors">
-                        <div className="flex items-center space-x-2 md:space-x-3">
-                          <div className="w-6 h-6 md:w-7 md:h-7 bg-emerald-100 rounded-md md:rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Home className="w-3 h-3 text-emerald-600" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h5 className="font-bold text-gray-800 text-xs md:text-sm truncate">{item.name}</h5>
-                            <p className="text-emerald-600 text-xs font-medium leading-tight">{item.dusun}</p>
-                          </div>
+                  <div className="space-y-3">
+                    {kepalaDusunList.map((member, idx) => (
+                      <div
+                        key={`${member.name}-${idx}`}
+                        className="flex items-center justify-between rounded-2xl p-3 md:p-4 text-left shadow-inner bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-100"
+                      >
+                        <div>
+                          <p className="font-semibold text-gray-900 text-sm md:text-base truncate">{member.name}</p>
+                          <p className="text-xs md:text-sm text-gray-600">{member.dusun}</p>
                         </div>
+                        <div className="text-emerald-600 text-sm font-bold">RT</div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
             </div>
-
           </section>
 
           {/* BPD */}

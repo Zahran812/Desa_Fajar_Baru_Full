@@ -21,6 +21,7 @@ const LoginPage = lazy(() => import("@/react-app/pages/Login"));
 const OperatorDashboard = lazy(() => import("@/react-app/pages/dashboard/OperatorDashboard"));
 const DusunDashboard = lazy(() => import("@/react-app/pages/dashboard/DusunDashboard"));
 const CitizenDashboard = lazy(() => import("@/react-app/pages/dashboard/CitizenDashboard"));
+const KadesDashboard = lazy(() => import("@/react-app/pages/dashboard/KadesDashboard"));
 
 // Transparansi Pages
 const APBPage = lazy(() => import("@/react-app/pages/transparansi/APB"));
@@ -109,6 +110,14 @@ export default function App() {
                   element={
                     <ProtectedRoute allowedRoles={['citizen']}>
                       <CitizenDashboard />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/dashboard/kades" 
+                  element={
+                    <ProtectedRoute allowedRoles={['kades']}>
+                      <KadesDashboard />
                     </ProtectedRoute>
                   } 
                 />

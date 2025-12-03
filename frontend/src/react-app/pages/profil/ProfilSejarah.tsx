@@ -1,4 +1,5 @@
 import PageLayout from '@/react-app/components/PageLayout';
+import IDMSnapshot from '@/react-app/components/IDMSnapshot';
 import { 
   MapPin, Users, Award, Eye, Heart, 
   Zap, Building2
@@ -152,6 +153,7 @@ const ProfilSejarah = () => {
                 ))}
               </div>
             </div>
+            <IDMSnapshot />
           </section>
 
           {/* Visi & Misi */}

@@ -1,4 +1,4 @@
-import { Users, Home, GraduationCap, Briefcase, TrendingUp, MapPin } from 'lucide-react';
+import { Users, Home, User, User2, TrendingUp, MapPin } from 'lucide-react';
 import { useContentAnimation, useStaggeredAnimation } from '@/react-app/hooks/useContentAnimation';
 import { useState, useEffect } from 'react';
 
@@ -7,6 +7,7 @@ const Statistics = () => {
   const { visibleItems: statItems, containerRef: statsRef } = useStaggeredAnimation(4, 150);
   const { isVisible: demoVisible, elementRef: demoRef } = useContentAnimation({ delay: 400 });
   const { isVisible: areaVisible, elementRef: areaRef } = useContentAnimation({ delay: 600 });
+  const { isVisible: mapVisible, elementRef: mapRef } = useContentAnimation({ delay: 900 });
   
   // Mobile carousel state for village areas
   const [currentAreaSlide, setCurrentAreaSlide] = useState(0);
@@ -15,57 +16,77 @@ const Statistics = () => {
     {
       icon: Users,
       title: 'Total Penduduk',
-      value: '2,847',
+      value: '11.626',
       subtitle: 'Jiwa',
       color: 'from-emerald-500 to-blue-500',
-      trend: '+2.3%'
+      trend: '+0.8%'
     },
     {
       icon: Home,
       title: 'Kepala Keluarga',
-      value: '847',
+      value: '3.626',
       subtitle: 'KK',
       color: 'from-blue-500 to-emerald-500',
-      trend: '+1.8%'
+      trend: '+0.4%'
     },
     {
-      icon: GraduationCap,
-      title: 'Tingkat Pendidikan',
-      value: '89%',
-      subtitle: 'Melek Huruf',
-      color: 'from-emerald-500 to-blue-500',
-      trend: '+5.2%'
+      icon: User,
+      title: 'Laki-laki',
+      value: '5.905',
+      subtitle: 'Jiwa',
+      color: 'from-cyan-500 to-blue-500',
+      trend: '+0.2%'
     },
     {
-      icon: Briefcase,
-      title: 'Tingkat Ekonomi',
-      value: '76%',
-      subtitle: 'Produktif',
-      color: 'from-blue-500 to-emerald-500',
-      trend: '+3.1%'
+      icon: User2,
+      title: 'Perempuan',
+      value: '5.698',
+      subtitle: 'Jiwa',
+      color: 'from-pink-500 to-rose-500',
+      trend: '+0.1%'
     }
   ];
 
   const demographics = [
-    { category: 'Laki-laki', value: 1458, percentage: 51.2, color: 'bg-emerald-500' },
-    { category: 'Perempuan', value: 1389, percentage: 48.8, color: 'bg-blue-500' },
+    { category: 'Laki-laki', value: 5905, percentage: 51, color: 'bg-emerald-500' },
+    { category: 'Perempuan', value: 5698, percentage: 49, color: 'bg-blue-500' }
   ];
 
   const ageGroups = [
     { category: '0-14 tahun', value: 28.3, color: 'bg-emerald-500' },
     { category: '15-64 tahun', value: 64.7, color: 'bg-blue-500' },
-    { category: '65+ tahun', value: 7.0, color: 'bg-gradient-to-r from-emerald-500 to-blue-500' },
+    { category: '65+ tahun', value: 7.0, color: 'bg-gradient-to-r from-emerald-500 to-blue-500' }
   ];
 
+  const [selectedMapType, setSelectedMapType] = useState<'administrasi' | 'kelerengan' | 'agrisawah'>('administrasi');
+
   const areas = [
-    { name: 'Dusun 1', population: 467, area: '2.2 km²' },
-    { name: 'Dusun 2A', population: 423, area: '1.8 km²' },
-    { name: 'Dusun 2B', population: 398, area: '1.6 km²' },
-    { name: 'Dusun 3A', population: 445, area: '2.0 km²' },
-    { name: 'Dusun 3B', population: 412, area: '1.9 km²' },
-    { name: 'Dusun 4', population: 456, area: '2.1 km²' },
-    { name: 'Dusun 5', population: 446, area: '2.0 km²' },
+    { name: 'Dusun I', population: 1231, area: '2.2 km²' },
+    { name: 'Dusun II A', population: 1418, area: '1.8 km²' },
+    { name: 'Dusun II B', population: 1905, area: '1.6 km²' },
+    { name: 'Dusun III A', population: 2434, area: '2.0 km²' },
+    { name: 'Dusun III B', population: 2260, area: '1.9 km²' },
+    { name: 'Dusun IV', population: 1027, area: '2.1 km²' },
+    { name: 'Dusun V', population: 1297, area: '2.0 km²' }
   ];
+
+  const mapTemplates = {
+    administrasi: {
+      label: 'Peta Administrasi',
+      scale: '1:18.000',
+      image: 'https://mocha-cdn.com/0199a380-4422-7144-b053-fdf82f04e8e4/image.png_0781.png'
+    },
+    kelerengan: {
+      label: 'Peta Kelerengan',
+      scale: '1:30.000',
+      image: 'https://mocha-cdn.com/0199a380-4422-7144-b053-fdf82f04e8e4/image.png_9342.png'
+    },
+    agrisawah: {
+      label: 'Peta AgriSawah',
+      scale: '1:30.000',
+      image: 'https://mocha-cdn.com/0199a380-4422-7144-b053-fdf82f04e8e4/image.png_8404.png'
+    }
+  } as const;
 
   // Auto slide effect for village areas (mobile only)
   useEffect(() => {
@@ -247,6 +268,91 @@ const Statistics = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Map Showcase */}
+        <div
+          ref={mapRef as any}
+          className={`mt-10 bg-white rounded-2xl shadow-xl p-6 lg:p-8 space-y-6 ${mapVisible ? 'animate-slide-up' : 'opacity-0'}`}
+        >
+          <div className="grid lg:grid-cols-2 gap-6">
+            <div className="bg-gray-50 rounded-2xl border border-gray-200 p-4 lg:p-6 space-y-4 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-500">Peta Lokasi</p>
+                  <h3 className="text-lg font-semibold text-gray-800">Desa Fajar Baru</h3>
+                </div>
+                <MapPin className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div className="rounded-xl overflow-hidden shadow-inner">
+                <iframe
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3170.7234567!2d105.2652679!3d-5.3420085!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x2e40c4e05391e265%3A0x19082a5416920514!2sGg.+Balai+Desa!5e1!3m2!1sen!2sid!4v1696176000000!5m2!1sen!2sid"
+                  width="100%"
+                  height="260"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                ></iframe>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Kantor Balai Desa Fajar Baru</p>
+                  <p className="text-xs text-gray-500">Jl. R.A. Basyid No.48, Fajar Baru, Lampung Selatan</p>
+                </div>
+                <a
+                  href="https://www.google.com/maps/place/Gg.+Balai+Desa/@-5.3420085,105.2652679,1288m/data=!3m1!1e3!4m7!3m6!1s0x2e40c4e05391e265:0x19082a5416920514!4b1!8m2!3d-5.3435775!4d105.2684809!16s%2Fg%2F11k3qk06j8!5m1!1e4?entry=ttu&g_ep=EgoyMDI1MDkyOC4wIKXMDSoASAFQAw%3D%3D"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-primary px-4 py-2 text-sm font-semibold hover:scale-105 transition-transform"
+                >
+                  Buka di Maps
+                </a>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-50 to-blue-50 rounded-2xl border border-emerald-100 p-6 lg:p-8">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-gray-500">Peta Tematik</p>
+                  <h3 className="text-lg font-semibold text-gray-800">Desa Fajar Baru</h3>
+                </div>
+                <select
+                  value={selectedMapType}
+                  onChange={(e) => setSelectedMapType(e.target.value as typeof selectedMapType)}
+                  className="px-3 py-2 bg-white rounded-xl border border-emerald-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                >
+                  {Object.entries(mapTemplates).map(([key, template]) => (
+                    <option key={key} value={key}>{template.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 gap-3 mb-4">
+                {[
+                  { label: 'Luas Wilayah', value: '756 Ha', description: 'Total wilayah administrasi' },
+                  { label: 'Skala Peta', value: mapTemplates[selectedMapType].scale, description: 'Detail cakupan' },
+                  { label: 'Jumlah Dusun', value: '7 Dusun', description: 'Pembagian wilayah administratif' }
+                ].map((stat) => (
+                  <div key={stat.label} className="bg-white/80 rounded-xl border border-white/70 p-3 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">{stat.label}</p>
+                    <p className="text-xl font-semibold text-gray-800">{stat.value}</p>
+                    <p className="text-xs text-gray-500">{stat.description}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-2xl overflow-hidden border border-emerald-100 shadow-inner">
+                <img
+                  src={mapTemplates[selectedMapType].image}
+                  alt={mapTemplates[selectedMapType].label}
+                  className="w-full h-56 object-cover"
+                />
+              </div>
+              <div className="mt-4 text-xs text-gray-600 space-y-1">
+                <p>Sumber data: Google Earth, Data Peta Rupa Bumi Indonesia, Batas Desa Dukcapil Lampung 2019, Informasi Geospasial Tematik Peta Desa 2024, Open Street Map Roads.</p>
+                <p>Skala mengikuti anggaran KKN ITERA Kelompok 13 Periode Ke-15.</p>
+              </div>
+            </div>
           </div>
         </div>
 

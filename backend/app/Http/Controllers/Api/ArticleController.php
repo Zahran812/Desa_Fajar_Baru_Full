@@ -57,4 +57,17 @@ class ArticleController extends Controller
 
         return response()->json($article);
     }
+
+    /**
+     * Get all unique categories from published articles.
+     */
+    public function getUniqueCategories()
+    {
+        $categories = Article::where('status', 'published')
+                               ->whereNotNull('category')
+                               ->where('category', '!=', '')
+                               ->distinct()
+                               ->pluck('category');
+        return response()->json($categories);
+    }
 }

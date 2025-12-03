@@ -19,7 +19,7 @@ class ServiceController extends Controller
      */
     public function indexPublic()
     {
-        $services = Service::where('status', 'active')->with('templates')->latest()->get();
+        $services = Service::where('status', 'active')->with(['templates', 'category'])->latest()->get();
         return response()->json($services);
     }
 
@@ -33,7 +33,7 @@ class ServiceController extends Controller
         }
         
         // Memuat template agar Accessor file_url berjalan saat di-serialize
-        return response()->json($service->load('templates'));
+        return response()->json($service->load(['templates', 'category']));
     }
 
     /**
@@ -42,7 +42,7 @@ class ServiceController extends Controller
     public function indexAdmin()
     {
         // Accessor Model ServiceTemplate akan otomatis memformat file_url.
-        $services = Service::with('templates')->latest()->get();
+        $services = Service::with(['templates', 'category'])->latest()->get();
         return response()->json($services);
     }
 
@@ -58,7 +58,7 @@ class ServiceController extends Controller
             'processing_time' => 'required|string|max:100',
             'fee' => 'required|integer|min:0',
             'status' => ['required', Rule::in(['active', 'inactive'])],
-            'category' => 'required|string|max:50',
+            'category_id' => 'required|exists:categories,id',
             'templates_data' => 'nullable|json',
         ]);
         
@@ -82,6 +82,7 @@ class ServiceController extends Controller
             
             $service = Service::create(array_merge($validatedData, [
                 'requirements' => $validatedData['requirements'],
+                'category_id' => $validatedData['category_id']
             ]));
             
             $newTemplates = [];
@@ -109,7 +110,7 @@ class ServiceController extends Controller
             }
 
             // Memuat ulang relasi agar Accessor file_url berjalan
-            return response()->json($service->load('templates'), 201);
+            return response()->json($service->load(['templates', 'category']), 201);
         });
     }
 
@@ -125,7 +126,7 @@ class ServiceController extends Controller
             'processing_time' => 'required|string|max:100',
             'fee' => 'required|integer|min:0',
             'status' => ['required', Rule::in(['active', 'inactive'])],
-            'category' => 'required|string|max:50',
+            'category_id' => 'required|exists:categories,id',
             'templates_data' => 'nullable|json',
         ]);
         
@@ -143,6 +144,7 @@ class ServiceController extends Controller
             // 1. Update data Service
             $service->update(array_merge($validatedData, [
                 'requirements' => $validatedData['requirements'],
+                'category_id' => $validatedData['category_id']
             ]));
             
             // 2. Sinkronisasi Templates
@@ -184,7 +186,7 @@ class ServiceController extends Controller
                 });
 
             // Memuat ulang relasi agar Accessor file_url berjalan
-            return response()->json($service->load('templates'));
+            return response()->json($service->load(['templates', 'category']));
         });
     }
 

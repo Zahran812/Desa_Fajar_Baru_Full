@@ -177,6 +177,13 @@ interface GalleryItem {
   created_at?: string;
 }
 
+interface Category {
+  id: number;
+  name: string;
+  description: string;
+  icon?: string;
+}
+
 interface Dusun {
   id: string;
   name: string;
@@ -194,7 +201,8 @@ interface Service {
   processing_time: string;
   fee: number;
   status: string;
-  category: string;
+  category_id: number;
+  category?: Category;
   templates?: { id?: number; name: string; file_url: string; file_object?: File | null; }[];
 }
 
@@ -273,6 +281,7 @@ const OperatorDashboard = () => {
   const [transparencyData, setTransparencyData] = useState<TransparencyData[]>(mockTransparencyData);
   const [villagePrograms, setVillagePrograms] = useState<VillageProgram[]>(mockVillagePrograms);
   const [services, setServices] = useState<Service[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [ppidServices, setPpidServices] = useState<PPIDService[]>([]);
 
   // Loading states
@@ -420,11 +429,38 @@ const OperatorDashboard = () => {
     dusun: ''
   });
 
+  const fetchCategories = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await apiFetch("/categories", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch categories. Status:', response.status);
+        console.error('Response:', errorText);
+        setCategories([]);
+        return;
+      }
+
+      const data = await response.json();
+      console.log('Fetched categories:', data);
+      setCategories(data);
+
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      setCategories([]);
+    }
+  };
+
   const fetchServices = async () => {
     setServicesLoading(true);
     try {
         const token = localStorage.getItem("auth_token");
-        // Demo data for pending users (always loaded for demo)
         const response = await apiFetch("/admin/services", {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -433,12 +469,15 @@ const OperatorDashboard = () => {
         });
 
       if (!response.ok) {
-        console.error('Failed to fetch services');
+        const errorText = await response.text();
+        console.error('Failed to fetch services. Status:', response.status);
+        console.error('Response:', errorText);
         setServices([]);
         return;
       }
 
       const data = await response.json();
+      console.log('Fetched admin services:', data);
 
       // Data yang diterima langsung berupa array
       const items = Array.isArray(data) ? data : [];
@@ -454,11 +493,10 @@ const OperatorDashboard = () => {
         'processing_time' in item &&
         'fee' in item &&
         'status' in item &&
-        'category' in item &&
-        'templates' in item &&
-        Array.isArray(item.templates)
+        'category_id' in item
       );
 
+      console.log('Valid services:', validItems);
       setServices(validItems);
 
     } catch (error) {
@@ -724,6 +762,7 @@ const OperatorDashboard = () => {
         
         // Mock services data - sesuai dengan Administrasi.tsx
         await fetchServices();
+        await fetchCategories();
 
         // Fetch all requests for operator dashboard
         await fetchAllRequests();
@@ -1924,7 +1963,7 @@ const OperatorDashboard = () => {
         formData.append("processing_time", serviceData.processing_time);
         formData.append("fee", serviceData.fee.toString());
         formData.append("status", serviceData.status);
-        formData.append("category", serviceData.category);
+        formData.append("category_id", serviceData.category_id.toString());
         
         // Requirements dikirim sebagai JSON string (karena ini array)
         formData.append("requirements", JSON.stringify(serviceData.requirements));
@@ -1957,6 +1996,16 @@ const OperatorDashboard = () => {
             formData.append("_method", "PUT");
         }
 
+        // Debug: Log FormData
+        console.log('=== Sending Service Data ===');
+        console.log('URL:', url);
+        console.log('Method:', method);
+        console.log('Is Edit:', isEdit);
+        for (const [key, value] of formData.entries()) {
+            console.log(key, ':', value);
+        }
+        console.log('=== End Service Data ===');
+
         const token = localStorage.getItem("auth_token");
 
         const response = await apiFetch(url, {
@@ -1969,9 +2018,16 @@ const OperatorDashboard = () => {
         });
 
         if (!response.ok) {
-            const err = await response.json();
-            console.error('Validation Errors:', err.errors);
-            alert(`Gagal menyimpan layanan: ${err.message}`);
+            const responseText = await response.text();
+            console.error('Response status:', response.status);
+            console.error('Response text:', responseText);
+            try {
+                const err = JSON.parse(responseText);
+                console.error('Validation Errors:', err.errors);
+                alert(`Gagal menyimpan layanan: ${err.message || responseText.substring(0, 200)}`);
+            } catch {
+                alert(`Gagal menyimpan layanan. Status: ${response.status}\n${responseText.substring(0, 500)}`);
+            }
             return;
         }
 
@@ -5020,6 +5076,8 @@ const OperatorDashboard = () => {
   const renderServiceDetailModal = () => {
     if (!showServiceDetailModal || !serviceDetailModalData) return null;
 
+    const category = categories.find(c => c.id === serviceDetailModalData.category_id);
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowServiceDetailModal(false)}>
         <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -5051,9 +5109,11 @@ const OperatorDashboard = () => {
               <span className={`px-4 py-2 text-sm font-medium rounded-full ${getStatusColor(serviceDetailModalData.status)}`}>
                 {getStatusLabel(serviceDetailModalData.status)}
               </span>
-              <span className="px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-full font-medium">
-                {serviceDetailModalData.category}
-              </span>
+              {category && (
+                <span className="px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-full font-medium">
+                  {category.name}
+                </span>
+              )}
             </div>
 
             {/* Description */}

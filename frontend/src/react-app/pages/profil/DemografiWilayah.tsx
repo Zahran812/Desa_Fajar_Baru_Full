@@ -57,32 +57,36 @@ const DemografiWilayah = () => {
 
   // Data Demografi
   const demografiData = {
-    totalPenduduk: 5247,
-    lakiLaki: 2635,
-    perempuan: 2612,
-    kk: 1456,
-    kepadatan: '116 jiwa/km²',
-    kelompokUsia: [
-      { kategori: '0-14 tahun', jumlah: 1258, persentase: 24 },
-      { kategori: '15-64 tahun', jumlah: 3465, persentase: 66 },
-      { kategori: '65+ tahun', jumlah: 524, persentase: 10 }
-    ],
-    pendidikan: [
-      { tingkat: 'Tidak/Belum Sekolah', jumlah: 425 },
-      { tingkat: 'SD/Sederajat', jumlah: 1785 },
-      { tingkat: 'SMP/Sederajat', jumlah: 1456 },
-      { tingkat: 'SMA/Sederajat', jumlah: 1248 },
-      { tingkat: 'Perguruan Tinggi', jumlah: 333 }
-    ],
-    pekerjaan: [
-      { jenis: 'Petani', jumlah: 1567 },
-      { jenis: 'Buruh', jumlah: 892 },
-      { jenis: 'Pedagang', jumlah: 445 },
-      { jenis: 'PNS/TNI/Polri', jumlah: 234 },
-      { jenis: 'Wiraswasta', jumlah: 678 },
-      { jenis: 'Lainnya', jumlah: 431 }
-    ]
+    totalPenduduk: 11626,
+    lakiLaki: 5905,
+    perempuan: 5698,
+    kk: 3626
   };
+
+  const dusunData = [
+    { name: 'Dusun I', kk: 386, penduduk: 1231, lakiLaki: 661, perempuan: 570 },
+    { name: 'Dusun II A', kk: 429, penduduk: 1418, lakiLaki: 778, perempuan: 640 },
+    { name: 'Dusun II B', kk: 456, penduduk: 1905, lakiLaki: 943, perempuan: 963 },
+    { name: 'Dusun III A', kk: 607, penduduk: 2434, lakiLaki: 1216, perempuan: 1218 },
+    { name: 'Dusun III B', kk: 616, penduduk: 2260, lakiLaki: 1157, perempuan: 1138 },
+    { name: 'Dusun IV', kk: 377, penduduk: 1027, lakiLaki: 498, perempuan: 524 },
+    { name: 'Dusun V', kk: 365, penduduk: 1297, lakiLaki: 652, perempuan: 645 }
+  ];
+
+  const rekapitulasiDusun = {
+    kk: 3626,
+    penduduk: 11626
+  };
+
+  const aggregatedDusun = dusunData.reduce(
+    (acc, dusun) => ({
+      kk: acc.kk + dusun.kk,
+      penduduk: acc.penduduk + dusun.penduduk,
+      lakiLaki: (acc.lakiLaki ?? 0) + dusun.lakiLaki,
+      perempuan: (acc.perempuan ?? 0) + dusun.perempuan
+    }),
+    { kk: 0, penduduk: 0, lakiLaki: 0, perempuan: 0 }
+  );
 
   // Demo stats for carousel
   const demoStats = [
@@ -561,59 +565,51 @@ const DemografiWilayah = () => {
               ))}
             </div>
 
-            <div className="grid lg:grid-cols-3 gap-6 md:gap-8">
-              {/* Kelompok Usia */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8">
-                <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-6 flex items-center">
-                  <BarChart3 className="w-5 h-5 text-emerald-600 mr-2" />
-                  Kelompok Usia
-                </h3>
-                <div className="space-y-4">
-                  {demografiData.kelompokUsia.map((kelompok, index) => (
-                    <div key={index}>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-gray-700 font-medium text-sm md:text-base">{kelompok.kategori}</span>
-                        <span className="text-gray-600 text-sm md:text-base">{kelompok.persentase}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
-                        <div 
-                          className="h-3 bg-emerald-600 rounded-full"
-                          style={{ width: `${kelompok.persentase}%` }}
-                        ></div>
-                      </div>
-                      <div className="text-right mt-1">
-                        <span className="text-xs md:text-sm text-gray-500">{kelompok.jumlah.toLocaleString()} jiwa</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            <div className="mt-12 bg-white rounded-2xl shadow-lg p-6 md:p-8">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                <h3 className="text-lg md:text-xl font-semibold text-gray-800">Data Dusun</h3>
+                <p className="text-sm text-gray-500">Rekapitulasi tercatat sesuai dokumen terakhir.</p>
               </div>
-
-              {/* Pendidikan */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8">
-                <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-6">Tingkat Pendidikan</h3>
-                <div className="space-y-3">
-                  {demografiData.pendidikan.map((pendidikan, index) => (
-                    <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                      <span className="text-gray-700 text-sm md:text-base">{pendidikan.tingkat}</span>
-                      <span className="text-emerald-600 font-semibold text-sm md:text-base">{pendidikan.jumlah.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left text-gray-600">
+                  <thead className="text-xs uppercase bg-emerald-50 text-emerald-600">
+                    <tr>
+                      <th className="px-3 py-2">Dusun</th>
+                      <th className="px-3 py-2 text-right">KK</th>
+                      <th className="px-3 py-2 text-right">Penduduk</th>
+                      <th className="px-3 py-2 text-right">Laki-laki</th>
+                      <th className="px-3 py-2 text-right">Perempuan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dusunData.map((dusun) => (
+                      <tr key={dusun.name} className="border-b border-gray-100">
+                        <td className="px-3 py-2 font-medium text-gray-700">{dusun.name}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-700">{dusun.kk.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-gray-700">{dusun.penduduk.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{dusun.lakiLaki.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right">{dusun.perempuan.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-emerald-50 text-emerald-800 font-semibold">
+                      <td className="px-3 py-2">Total</td>
+                      <td className="px-3 py-2 text-right">{aggregatedDusun.kk.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{aggregatedDusun.penduduk.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{aggregatedDusun.lakiLaki?.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{aggregatedDusun.perempuan?.toLocaleString()}</td>
+                    </tr>
+                    <tr className="bg-gray-100 text-gray-600 font-medium">
+                      <td className="px-3 py-2">Rekapitulasi Dokumen</td>
+                      <td className="px-3 py-2 text-right">{rekapitulasiDusun.kk.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{rekapitulasiDusun.penduduk.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right" colSpan={2}></td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-
-              {/* Pekerjaan */}
-              <div className="bg-white rounded-2xl shadow-lg p-6 md:p-8">
-                <h3 className="text-lg md:text-xl font-semibold text-gray-800 mb-6">Mata Pencaharian</h3>
-                <div className="space-y-3">
-                  {demografiData.pekerjaan.map((pekerjaan, index) => (
-                    <div key={index} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                      <span className="text-gray-700 text-sm md:text-base">{pekerjaan.jenis}</span>
-                      <span className="text-emerald-600 font-semibold text-sm md:text-base">{pekerjaan.jumlah.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Catatan: jumlah rekapitulasi sudah diverifikasi dengan catatan gambar, "tiga ribu dua ratus dua puluh enam" untuk KK dan 11.626 penduduk.
+              </p>
             </div>
           </section>
         </div>
