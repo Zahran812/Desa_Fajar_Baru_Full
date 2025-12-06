@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Save, X, FileText, Download,
   AlertCircle, Clock, DollarSign, CheckCircle, Plus, Trash2, Link, ChevronDown,
-  Briefcase, Users, Home, School, Baby, FileCheck, ClipboardList, Building2, Stamp, LucideIcon, Pencil
+  Briefcase, Users, Home, School, Baby, FileCheck, ClipboardList, Building2, Stamp, LucideIcon, Pencil, Mail
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/react-app/lib/api';
+import LetterTemplateEditor from './LetterTemplateEditor';
 
 // Icon mapping untuk kategori surat desa
 const CATEGORY_ICONS: Record<string, { icon: LucideIcon; label: string }> = {
@@ -89,6 +90,9 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
   
   // State untuk template yang akan ditambahkan, menyimpan nama dan File object
   const [newTemplate, setNewTemplate] = useState<{ name: string; file: File | null }>({ name: '', file: null });
+
+  // State untuk Letter Template Editor modal
+  const [showLetterTemplateEditor, setShowLetterTemplateEditor] = useState(false);
 
   // Ref untuk file input agar bisa di-reset
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -670,6 +674,33 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
                 )}
               </div>
             </div>
+
+            {/* Letter Templates Section */}
+            {service && service.id && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <Mail className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Template Surat</h3>
+                      <p className="text-xs text-gray-500">Kelola template surat untuk layanan ini</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowLetterTemplateEditor(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium text-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Kelola Template
+                  </button>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Upload template surat yang dapat digunakan untuk generate surat otomatis. File disimpan secara private.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Sidebar (Tetap sama) */}
@@ -929,6 +960,14 @@ const ServiceEditor = ({ service, onSave, onCancel }: ServiceEditorProps) => {
           </div>
         </div>
       </div>
+
+      {/* Letter Template Editor Modal */}
+      {showLetterTemplateEditor && service && service.id && (
+        <LetterTemplateEditor
+          serviceId={service.id}
+          onClose={() => setShowLetterTemplateEditor(false)}
+        />
+      )}
     </div>
   );
 };

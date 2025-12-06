@@ -10,6 +10,7 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\LetterTemplateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\Dashboard\ArticleController as DashboardArticleController;
@@ -52,12 +53,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('categories', CategoryController::class);
     Route::get('admin/services', [ServiceController::class, 'indexAdmin']);
 
+    // Letter Templates routes
+    Route::post('letter-templates', [LetterTemplateController::class, 'store']);
+    Route::get('letter-templates/service/{service}', [LetterTemplateController::class, 'indexByService']);
+    Route::get('letter-templates/{letterTemplate}/download', [LetterTemplateController::class, 'download'])->name('letter-templates.download');
+    Route::get('letter-templates/{letterTemplate}/preview-pdf', [LetterTemplateController::class, 'previewPdf'])->name('letter-templates.preview-pdf');
+    Route::post('letter-templates/{letterTemplate}/toggle-status', [LetterTemplateController::class, 'toggleStatus']);
+    Route::put('letter-templates/{letterTemplate}', [LetterTemplateController::class, 'update']);
+    Route::delete('letter-templates/{letterTemplate}', [LetterTemplateController::class, 'destroy']);
+
 
     Route::post('requests', [RequestController::class, 'store']); // Mengirim pengajuan baru
     Route::get('requests/me', [RequestController::class, 'index']); // Melihat daftar pengajuan sendiri
     Route::get('requests/all', [RequestController::class, 'indexAll']); // Melihat semua pengajuan (admin/operator)
     Route::put('requests/{id}/status', [RequestController::class, 'updateStatus']); // Update status ke in_progress
     Route::post('requests/{id}/approve', [RequestController::class, 'approve']); // Approve pengajuan
+    Route::post('requests/{id}/verify', [RequestController::class, 'verify']); // Verify pengajuan
     Route::post('requests/{id}/reject', [RequestController::class, 'reject']); // Reject pengajuan
 
     // --- Rute untuk Operator Dashboard (Artikel/Berita) ---

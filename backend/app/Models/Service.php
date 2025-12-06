@@ -27,11 +27,19 @@ class Service extends Model
     ];
 
     /**
-     * Relasi ke template dokumen
+     * Relasi ke template dokumen (persyaratan)
      */
     public function templates(): HasMany
     {
         return $this->hasMany(ServiceTemplate::class);
+    }
+
+    /**
+     * Relasi ke template surat (letter templates)
+     */
+    public function letterTemplates(): HasMany
+    {
+        return $this->hasMany(LetterTemplate::class);
     }
 
     /**

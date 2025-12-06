@@ -232,6 +232,29 @@ class RequestController extends Controller
     }
 
     /**
+     * Verify pengajuan dengan catatan, tanpa upload file.
+     * Endpoint: POST /api/requests/{id}/verify
+     */
+    public function verify(Request $httpRequest, $id)
+    {
+        $request = UserRequest::findOrFail($id);
+
+        $validatedData = $httpRequest->validate([
+            'response' => 'nullable|string',
+        ]);
+
+        $request->update([
+            'status' => 'operator_verified',
+            'response' => $validatedData['response'],
+        ]);
+
+        return response()->json([
+            'message' => 'Pengajuan berhasil diverifikasi',
+            'request' => $request->load(['user:id,full_name', 'service', 'documents', 'outputs'])
+        ]);
+    }
+
+    /**
      * Reject pengajuan dengan catatan.
      * Endpoint: POST /api/requests/{id}/reject
      */

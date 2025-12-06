@@ -2,29 +2,36 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '@/react-app/lib/api';
 import { useAuth } from '@/react-app/contexts/AuthContext';
 import DashboardLayout from '@/react-app/components/DashboardLayout';
-import { 
-  FileText, CheckCircle, XCircle, Loader2,
-  FileSignature, FileCheck, FileX, FileClock, FileSearch,
-  Home, Users, UserCheck, Clock, AlertCircle, BarChart2
+import {
+  Home, FileText, CheckCircle, XCircle, Loader2,
+  FileSignature, FileCheck, FileX, FileClock,
+  Download, Eye, BarChart2, Users, Archive,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+interface DocumentItem {
+  id: number;
+  required_name: string;
+  original_name: string;
+}
 
 interface Request {
   id: number;
+  user_id: number;
+  service_id: number;
   request_type: string;
   subject: string;
   description: string;
-  status: 'pending' | 'processed' | 'approved' | 'rejected' | 'completed';
-  documents?: string;
+  status: string;
+  documents?: DocumentItem[];
   response?: string;
   created_at: string;
   updated_at: string;
   user?: {
     id: number;
     full_name: string;
-    nik: string;
-    address: string;
+    nik?: string;
+    address?: string;
   };
   service?: {
     id: number;
@@ -33,7 +40,8 @@ interface Request {
 }
 
 const KadesDashboard = () => {
-  const { user } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalRequests: 0,
@@ -41,499 +49,392 @@ const KadesDashboard = () => {
     approvedRequests: 0,
     rejectedRequests: 0,
     completedRequests: 0,
-    inProcessRequests: 0
+    inProcessRequests: 0,
   });
-  const [recentRequests, setRecentRequests] = useState<Request[]>([]);
+  const [allRequests, setAllRequests] = useState<Request[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [loadingRequests, setLoadingRequests] = useState(false);
 
-  // Fetch dashboard statistics
-  const fetchDashboardStats = async () => {
+  useEffect(() => {
+    if (!authLoading && user?.role !== 'kades') {
+      window.location.href = '/';
+    }
+  }, [user, authLoading]);
+
+  const fetchAllRequests = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const requestsRes = await apiFetch('/api/requests');
-      const requests = Array.isArray(requestsRes) ? requestsRes : [];
-      
-      setStats({
-        totalRequests: requests.length,
-        pendingRequests: requests.filter((r: Request) => r.status === 'pending').length,
-        approvedRequests: requests.filter((r: Request) => r.status === 'approved').length,
-        rejectedRequests: requests.filter((r: Request) => r.status === 'rejected').length,
-        completedRequests: requests.filter((r: Request) => r.status === 'completed').length,
-        inProcessRequests: requests.filter((r: Request) => r.status === 'processed').length
+      const token = localStorage.getItem('auth_token');
+      const response = await apiFetch('/requests/all', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
       });
 
-      // Sort by most recent and get top 5
-      const sortedRequests = [...requests]
-        .sort((a: Request, b: Request) => 
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        )
-        .slice(0, 5);
+      if (!response.ok) {
+        throw new Error('Gagal mengambil data pengajuan');
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data.requests) ? data.requests : [];
+
+      const validItems = items.filter((item: Request) =>
+        item && typeof item === 'object' && 'id' in item && 'status' in item &&
+        item.user && typeof item.user === 'object' && 'full_name' in item.user &&
+        item.service && typeof item.service === 'object' && 'name' in item.service
+      );
       
-      setRecentRequests(sortedRequests);
+      const sortedRequests = validItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setAllRequests(sortedRequests);
+
+      setStats({
+        totalRequests: sortedRequests.length,
+        pendingRequests: sortedRequests.filter(r => r.status === 'pending').length,
+        approvedRequests: sortedRequests.filter(r => r.status === 'approved').length,
+        rejectedRequests: sortedRequests.filter(r => r.status === 'rejected').length,
+        completedRequests: sortedRequests.filter(r => r.status === 'completed').length,
+        inProcessRequests: sortedRequests.filter(r => r.status === 'processed').length
+      });
+
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('Error fetching requests:', error);
+      setAllRequests([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Format date to Indonesian format
+  useEffect(() => {
+    if (user && user.role === 'kades') {
+      fetchAllRequests();
+    }
+  }, [user]);
+
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'requests', label: 'Daftar Pengajuan', icon: FileText, badge: stats.pendingRequests },
+  ];
+
   const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { 
-      day: '2-digit', 
-      month: 'long', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    };
+    const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
     return new Date(dateString).toLocaleDateString('id-ID', options);
   };
-
-  // Get status badge style
-  const getStatusBadge = (status: string) => {
-    const baseStyle = 'px-2 py-1 rounded-full text-xs font-medium';
+  
+  const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending':
-        return `${baseStyle} bg-yellow-100 text-yellow-800`;
-      case 'processed':
-        return `${baseStyle} bg-blue-100 text-blue-800`;
-      case 'approved':
-        return `${baseStyle} bg-green-100 text-green-800`;
-      case 'rejected':
-        return `${baseStyle} bg-red-100 text-red-800`;
-      case 'completed':
-        return `${baseStyle} bg-purple-100 text-purple-800`;
-      default:
-        return `${baseStyle} bg-gray-100 text-gray-800`;
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'approved': return 'bg-emerald-100 text-emerald-800';
+      case 'rejected': return 'bg-red-100 text-red-800';
+      case 'processed': return 'bg-blue-100 text-blue-800'; // Renamed from in_progress
+      case 'completed': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  // View request details
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'pending': return 'Menunggu';
+      case 'approved': return 'Disetujui';
+      case 'rejected': return 'Ditolak';
+      case 'processed': return 'Diproses';
+      case 'completed': return 'Selesai';
+      default: return status;
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending': return <FileSignature className="w-4 h-4" />;
+      case 'approved': return <FileCheck className="w-4 h-4" />;
+      case 'rejected': return <FileX className="w-4 h-4" />;
+      case 'processed': return <FileClock className="w-4 h-4" />;
+      case 'completed': return <Archive className="w-4 h-4" />;
+      default: return <FileText className="w-4 h-4" />;
+    }
+  };
+
   const handleViewRequest = (request: Request) => {
     setSelectedRequest(request);
     setShowRequestModal(true);
   };
 
-  // Handle status update
   const handleUpdateStatus = async (status: string) => {
     if (!selectedRequest) return;
     
+    setLoadingRequests(true);
     try {
-      setLoadingRequests(true);
-      await apiFetch(`/api/requests/${selectedRequest.id}`, {
+      const token = localStorage.getItem('auth_token');
+      // Endpoint to update status by Kades
+      const response = await apiFetch(`/requests/${selectedRequest.id}/status/kades`, {
         method: 'PATCH',
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, response: `Status diperbarui oleh Kepala Desa` }),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
-      
-      // Refresh data
-      await fetchDashboardStats();
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Gagal memperbarui status');
+      }
+
+      await fetchAllRequests();
       setShowRequestModal(false);
     } catch (error) {
       console.error('Error updating request status:', error);
+      alert(`Gagal memperbarui status: ${error instanceof Error ? error.message : 'Error tidak diketahui'}`);
     } finally {
       setLoadingRequests(false);
     }
   };
 
-  // Initial data fetch
-  useEffect(() => {
-    fetchDashboardStats();
-  }, []);
+  const renderDashboard = () => (
+    <div className="space-y-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard Kepala Desa</h1>
+        <p className="text-gray-600">Selamat datang kembali, {user?.full_name}</p>
+      </div>
 
-  // Menu items for the dashboard sidebar
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'pengajuan', label: 'Kelola Pengajuan', icon: FileText },
-    { id: 'penduduk', label: 'Data Penduduk', icon: Users },
-    { id: 'laporan', label: 'Laporan', icon: BarChart2 },
-    { id: 'pengaturan', label: 'Pengaturan', icon: Settings }
-  ];
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {[
+          { title: 'Total Pengajuan', value: stats.totalRequests, icon: BarChart2, color: 'blue' },
+          { title: 'Menunggu Persetujuan', value: stats.pendingRequests, icon: FileSignature, color: 'yellow' },
+          { title: 'Pengajuan Disetujui', value: stats.approvedRequests, icon: FileCheck, color: 'emerald' },
+          { title: 'Pengajuan Ditolak', value: stats.rejectedRequests, icon: FileX, color: 'red' },
+          { title: 'Sedang Diproses', value: stats.inProcessRequests, icon: FileClock, color: 'blue' },
+          { title: 'Pengajuan Selesai', value: stats.completedRequests, icon: Archive, color: 'purple' },
+        ].map(item => {
+          const Icon = item.icon;
+          return (
+            <div key={item.title} className="bg-white rounded-xl p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">{item.title}</p>
+                  <p className="text-2xl font-bold text-gray-900">{item.value}</p>
+                </div>
+                <div className={`w-12 h-12 bg-${item.color}-50 rounded-lg flex items-center justify-center`}>
+                  <Icon className={`w-6 h-6 text-${item.color}-600`} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+      <div className="bg-white rounded-xl border border-gray-200">
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Pengajuan Terbaru</h3>
+            <button onClick={() => setActiveTab('requests')} className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+              Lihat semua →
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-6">
+          {loading ? <p>Memuat...</p> : <RequestTable requests={allRequests.slice(0, 5)} onView={handleViewRequest} />}
+        </div>
+      </div>
+    </div>
+  );
 
-  const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
-    // You can add navigation logic here if needed
-  };
+  const renderRequestsList = () => (
+    <div className="space-y-8">
+      <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-blue-600 bg-clip-text text-transparent">Daftar Semua Pengajuan</h2>
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8">
+        {loading ? <p>Memuat...</p> : <RequestTable requests={allRequests} onView={handleViewRequest} />}
+      </div>
+    </div>
+  );
 
-  const handleLogout = async () => {
-    try {
-      await apiFetch('/api/auth/logout', { method: 'POST' });
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Logout error:', error);
+  const RequestTable = ({ requests, onView }: { requests: Request[], onView: (req: Request) => void }) => (
+    <div className="overflow-x-auto">
+      {requests.length === 0 ? (
+        <div className="text-center py-8">
+          <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500">Belum ada pengajuan</p>
+        </div>
+      ) : (
+        <table className="w-full">
+          <thead>
+            <tr className="text-left">
+              <th className="text-sm font-medium text-gray-500 pb-3">Subjek</th>
+              <th className="text-sm font-medium text-gray-500 pb-3">Pemohon</th>
+              <th className="text-sm font-medium text-gray-500 pb-3">Tanggal</th>
+              <th className="text-sm font-medium text-gray-500 pb-3">Status</th>
+              <th className="text-sm font-medium text-gray-500 pb-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((request) => (
+              <tr key={request.id} className="border-t border-gray-100 hover:bg-gray-50">
+                <td className="py-4">
+                  <div>
+                    <p className="font-medium text-gray-900">{request.subject}</p>
+                    <p className="text-sm text-gray-500">{request.request_type}</p>
+                  </div>
+                </td>
+                <td className="py-4 text-sm text-gray-600">{request.user?.full_name || 'N/A'}</td>
+                <td className="py-4 text-sm text-gray-600">{new Date(request.created_at).toLocaleDateString('id-ID')}</td>
+                <td className="py-4">
+                  <span className={`px-2 py-1 text-xs font-medium rounded-full flex items-center gap-1.5 ${getStatusColor(request.status)}`}>
+                    {getStatusIcon(request.status)}
+                    {getStatusLabel(request.status)}
+                  </span>
+                </td>
+                <td className="py-4 text-right">
+                  <button onClick={() => onView(request)} className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1">
+                    <Eye className="w-4 h-4" />
+                    Detail
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard': return renderDashboard();
+      case 'requests': return renderRequestsList();
+      default: return renderDashboard();
     }
   };
 
-  return (
-    <DashboardLayout 
-      menuItems={menuItems}
-      activeTab={activeTab}
-      onTabChange={handleTabChange}
-      title="Dashboard Kepala Desa"
-      userInfo={{
-        name: user?.full_name || 'Kepala Desa',
-        role: 'Kepala Desa',
-        email: user?.email || ''
-      }}
-      onLogout={handleLogout}
-    >
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Kepala Desa</h1>
-          <p className="text-gray-600 mt-1">
-            Selamat datang, {user?.full_name || 'Kepala Desa'}. Berikut adalah ringkasan aktivitas terbaru.
-          </p>
-        </div>
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-emerald-600"></div>
+      </div>
+    );
+  }
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Total Pengajuan */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Total Pengajuan</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.totalRequests}</p>
-                <p className="text-xs text-gray-500 mt-1">Total seluruh pengajuan</p>
-              </div>
-              <div className="p-3 rounded-full bg-blue-50">
-                <FileText className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Menunggu Tandatangan */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-yellow-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Menunggu Tandatangan</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.pendingRequests}</p>
-                <p className="text-xs text-gray-500 mt-1">Menunggu persetujuan</p>
-              </div>
-              <div className="p-3 rounded-full bg-yellow-50">
-                <FileSignature className="w-6 h-6 text-yellow-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Sudah Ditandatangani */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-green-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Sudah Ditandatangani</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.approvedRequests}</p>
-                <p className="text-xs text-gray-500 mt-1">Total dokumen yang sudah ditandatangani</p>
-              </div>
-              <div className="p-3 rounded-full bg-green-50">
-                <FileCheck className="w-6 h-6 text-green-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Ditolak */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-red-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Ditolak</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.rejectedRequests}</p>
-                <p className="text-xs text-gray-500 mt-1">Total pengajuan ditolak</p>
-              </div>
-              <div className="p-3 rounded-full bg-red-50">
-                <FileX className="w-6 h-6 text-red-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Dalam Proses */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Dalam Proses</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.inProcessRequests}</p>
-                <p className="text-xs text-gray-500 mt-1">Sedang diproses oleh operator</p>
-              </div>
-              <div className="p-3 rounded-full bg-blue-50">
-                <FileClock className="w-6 h-6 text-blue-600" />
-              </div>
-            </div>
-          </div>
-
-          {/* Selesai */}
-          <div className="bg-white rounded-xl shadow-sm p-6 border-l-4 border-purple-500">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-500">Selesai</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.completedRequests}</p>
-                <p className="text-xs text-gray-500 mt-1">Total pengajuan selesai</p>
-              </div>
-              <div className="p-3 rounded-full bg-purple-50">
-                <CheckCircle className="w-6 h-6 text-purple-600" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Requests */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-medium text-gray-900">Pengajuan Terbaru</h2>
-              <Link 
-                to="/dashboard/kades/pengajuan" 
-                className="text-sm font-medium text-blue-600 hover:text-blue-800"
-              >
-                Lihat Semua
-              </Link>
-            </div>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Jenis Surat
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pemohon
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Tanggal
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th scope="col" className="relative px-6 py-3">
-                    <span className="sr-only">Aksi</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-4 text-center">
-                      <div className="flex justify-center">
-                        <Loader2 className="animate-spin h-5 w-5 text-blue-600" />
-                      </div>
-                    </td>
-                  </tr>
-                ) : recentRequests.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
-                      Tidak ada data pengajuan
-                    </td>
-                  </tr>
-                ) : (
-                  recentRequests.map((request) => (
-                    <tr key={request.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {request.request_type}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {request.service?.name || 'Layanan Lainnya'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {request.user?.full_name || 'N/A'}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {request.user?.nik || 'NIK: -'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(request.created_at)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={getStatusBadge(request.status)}>
-                          {request.status === 'pending' && 'Menunggu'}
-                          {request.status === 'processed' && 'Diproses'}
-                          {request.status === 'approved' && 'Disetujui'}
-                          {request.status === 'rejected' && 'Ditolak'}
-                          {request.status === 'completed' && 'Selesai'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => handleViewRequest(request)}
-                          className="text-blue-600 hover:text-blue-900 mr-3"
-                        >
-                          Detail
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+  if (!user || user.role !== 'kades') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Akses Ditolak</h2>
+          <p className="text-gray-600 mb-4">Anda tidak memiliki wewenang untuk mengakses halaman ini.</p>
+          <Link to="/" className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-emerald-700">Kembali ke Beranda</Link>
         </div>
       </div>
+    );
+  }
 
-      {/* Request Detail Modal */}
+  return (
+    <>
+      <DashboardLayout
+        menuItems={menuItems}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        title="Dashboard Kepala Desa"
+        userInfo={{ name: user.full_name, role: 'Kepala Desa' }}
+        onLogout={logout}
+      >
+        {renderContent()}
+      </DashboardLayout>
+
       {showRequestModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white p-6 border-b border-gray-200">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="text-lg font-medium text-gray-900">Detail Pengajuan</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Detail Pengajuan</h3>
                   <p className="text-sm text-gray-500">ID: {selectedRequest.id}</p>
                 </div>
-                <button 
-                  onClick={() => setShowRequestModal(false)}
-                  className="text-gray-400 hover:text-gray-500"
-                >
-                  <span className="sr-only">Tutup</span>
+                <button onClick={() => setShowRequestModal(false)} className="text-gray-400 hover:text-gray-600 p-2 rounded-full">
                   <XCircle className="h-6 w-6" />
                 </button>
               </div>
+            </div>
 
-              <div className="mt-6 space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Jenis Surat</h4>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {selectedRequest.request_type}
-                  </p>
+            <div className="p-8 space-y-6">
+              {[
+                { label: 'Jenis Surat', value: selectedRequest.request_type },
+                { label: 'Layanan', value: selectedRequest.service?.name || 'Lainnya' },
+                { label: 'Pemohon', value: selectedRequest.user?.full_name || 'N/A' },
+                { label: 'NIK Pemohon', value: selectedRequest.user?.nik || '-' },
+                { label: 'Deskripsi', value: selectedRequest.description, pre: true },
+                { label: 'Tanggal Pengajuan', value: formatDate(selectedRequest.created_at) },
+              ].map(item => (
+                <div key={item.label}>
+                  <h4 className="text-sm font-semibold text-gray-600">{item.label}</h4>
+                  <p className={`mt-1 text-gray-900 ${item.pre ? 'whitespace-pre-wrap' : ''}`}>{item.value}</p>
                 </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Layanan</h4>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {selectedRequest.service?.name || 'Layanan Lainnya'}
-                  </p>
+              ))}
+              
+              <div>
+                <h4 className="text-sm font-semibold text-gray-600">Status</h4>
+                <div className="mt-1">
+                  <span className={`px-3 py-1.5 text-sm font-semibold rounded-full flex items-center gap-2 w-fit ${getStatusColor(selectedRequest.status)}`}>
+                    {getStatusIcon(selectedRequest.status)}
+                    {getStatusLabel(selectedRequest.status)}
+                  </span>
                 </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Pemohon</h4>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {selectedRequest.user?.full_name || 'N/A'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    NIK: {selectedRequest.user?.nik || '-'}
-                  </p>
-                  {selectedRequest.user?.address && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Alamat: {selectedRequest.user.address}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Deskripsi</h4>
-                  <p className="mt-1 text-sm text-gray-900 whitespace-pre-line">
-                    {selectedRequest.description || 'Tidak ada deskripsi'}
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Status</h4>
-                  <div className="mt-1">
-                    <span className={getStatusBadge(selectedRequest.status)}>
-                      {selectedRequest.status === 'pending' && 'Menunggu'}
-                      {selectedRequest.status === 'processed' && 'Diproses'}
-                      {selectedRequest.status === 'approved' && 'Disetujui'}
-                      {selectedRequest.status === 'rejected' && 'Ditolak'}
-                      {selectedRequest.status === 'completed' && 'Selesai'}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Dokumen Pendukung</h4>
-                  {selectedRequest.documents ? (
-                    <div className="mt-2">
-                      <a 
-                        href={selectedRequest.documents} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-sm text-blue-600 hover:text-blue-800"
-                      >
-                        <FileSearch className="w-4 h-4 mr-1" />
-                        Lihat Dokumen
-                      </a>
+              </div>
+              
+              <div>
+                  <h4 className="text-sm font-semibold text-gray-600 mb-2">Dokumen Persyaratan</h4>
+                  {selectedRequest.documents && selectedRequest.documents.length > 0 ? (
+                    <div className="space-y-2">
+                      {selectedRequest.documents.map((doc: DocumentItem) => (
+                        <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200">
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-5 h-5 text-blue-600" />
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{doc.required_name}</p>
+                              <p className="text-xs text-gray-500">{doc.original_name}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const token = localStorage.getItem('auth_token');
+                              const url = `${import.meta.env.VITE_API_BASE_URL}/requests/document/${doc.id}/download?token=${encodeURIComponent(token || '')}`;
+                              window.open(url, '_blank');
+                            }}
+                            className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            <Download className="w-4 h-4" /> Unduh
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   ) : (
-                    <p className="mt-1 text-sm text-gray-500">Tidak ada dokumen</p>
+                    <p className="mt-1 text-sm text-gray-500">Tidak ada dokumen.</p>
                   )}
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-medium text-gray-500">Tanggal Pengajuan</h4>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {formatDate(selectedRequest.created_at)}
-                  </p>
-                </div>
-
-                {selectedRequest.updated_at && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-500">Diperbarui</h4>
-                    <p className="mt-1 text-sm text-gray-900">
-                      {formatDate(selectedRequest.updated_at)}
-                    </p>
-                  </div>
-                )}
-
-                {selectedRequest.response && (
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-500">Catatan</h4>
-                    <p className="mt-1 text-sm text-gray-900 whitespace-pre-line">
-                      {selectedRequest.response}
-                    </p>
-                  </div>
-                )}
               </div>
 
-              <div className="mt-6 pt-6 border-t border-gray-200 flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowRequestModal(false)}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Tutup
-                </button>
-                
-                {selectedRequest.status === 'pending' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateStatus('rejected')}
-                      disabled={loadingRequests}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50"
-                    >
-                      {loadingRequests ? (
-                        <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                      ) : (
-                        <XCircle className="-ml-1 mr-2 h-4 w-4" />
-                      )}
-                      Tolak
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateStatus('approved')}
-                      disabled={loadingRequests}
-                      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
-                    >
-                      {loadingRequests ? (
-                        <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                      ) : (
-                        <CheckCircle className="-ml-1 mr-2 h-4 w-4" />
-                      )}
-                      Setujui
-                    </button>
-                  </>
-                )}
-              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 p-6 border-t border-gray-200 flex justify-end space-x-3">
+              <button type="button" onClick={() => setShowRequestModal(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-100">
+                Tutup
+              </button>
+              
+              {selectedRequest.status === 'pending' && (
+                <>
+                  <button type="button" onClick={() => handleUpdateStatus('rejected')} disabled={loadingRequests} className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
+                    {loadingRequests ? <Loader2 className="animate-spin w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                    Tolak
+                  </button>
+                  <button type="button" onClick={() => handleUpdateStatus('approved')} disabled={loadingRequests} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
+                    {loadingRequests ? <Loader2 className="animate-spin w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                    Setujui
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 };
 
