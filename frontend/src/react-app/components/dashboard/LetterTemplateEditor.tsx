@@ -49,6 +49,8 @@ const LetterTemplateEditor = ({ serviceId, onClose }: LetterTemplateEditorProps)
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewKop, setPreviewKop] = useState<string | null>(null);
+  const [previewBody, setPreviewBody] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -241,51 +243,49 @@ const LetterTemplateEditor = ({ serviceId, onClose }: LetterTemplateEditorProps)
 
   const handlePreview = async (template: LetterTemplate) => {
     if (!template.id) return;
-  
+
     setPreviewTitle(`Preview: ${template.name}`);
     setShowPreviewModal(true);
     setIsPreviewLoading(true);
     setPreviewContent(null);
-    setError(null);
-  
+    setPreviewKop(null);
+    setPreviewBody(null);
+
     try {
       const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('Token otentikasi tidak ditemukan');
+
+      let response;
+
+      if (template.mime_type?.includes("word")) {
+        // Panggil preview HTML
+        response = await apiFetch(`/letter-templates/${template.id}/preview-html`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        const data = await response.json();
+        setPreviewKop(data.kop_html || null);
+        setPreviewBody(data.body_html || null);
+        // Kita tidak lagi menggunakan previewContent untuk html, jadi set ke 'html:true' hanya sebagai penanda
+        setPreviewContent('html:true');
+
+      } else {
+        // PDF case tetap sama
+        response = await apiFetch(`/letter-templates/${template.id}/preview-pdf`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        setPreviewContent(url);
       }
-  
-      // Use preview-pdf endpoint which converts Word to PDF
-      const response = await apiFetch(`/letter-templates/${template.id}/preview-pdf`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-        credentials: 'include',
-      });
-  
-      if (!response.ok) {
-        let errorMessage = `Gagal membuat preview: ${response.statusText}`;
-        try {
-          const errorData = await response.json();
-          // Use the detailed error message from the backend
-          errorMessage = errorData.message || errorMessage;
-          if (errorData.checked_path) {
-            errorMessage += ` Path: ${errorData.checked_path}`;
-          }
-        } catch (e) {
-          // Ignore if response is not JSON
-        }
-        throw new Error(errorMessage);
-      }
-  
-      const blob = await response.blob();
-      const fileUrl = URL.createObjectURL(blob);
-      setPreviewContent(fileUrl);
+
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Terjadi kesalahan saat membuat preview.';
-      setError(errorMessage);
-      setPreviewContent(`error:${errorMessage}`);
+      setPreviewContent("error: Gagal membuat preview");
     } finally {
       setIsPreviewLoading(false);
     }
   };
+
 
   const handleToggleStatus = async (templateId: number | undefined) => {
     if (!templateId) return;
@@ -640,7 +640,10 @@ const LetterTemplateEditor = ({ serviceId, onClose }: LetterTemplateEditorProps)
                     position: 'relative'
                   }}
                 >
-                  <div dangerouslySetInnerHTML={{ __html: previewContent.replace('html:', '') }} />
+                  <>
+                    {previewKop && <div dangerouslySetInnerHTML={{ __html: previewKop }} />}
+                    {previewBody && <div dangerouslySetInnerHTML={{ __html: previewBody }} />}
+                  </>
                 </div>
               </div>
             ) : previewContent ? (

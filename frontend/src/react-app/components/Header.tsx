@@ -95,7 +95,6 @@ const Header = () => {
       hasDropdown: true,
       submenu: [
         { name: 'APB Desa', href: '/transparansi/apb' },
-        { name: 'Bansos', href: '/transparansi/bansos' },
         { name: 'Laporan Pembangunan', href: '/transparansi/pembangunan' },
         { name: 'Statistik', href: '/transparansi/statistik' }
       ]

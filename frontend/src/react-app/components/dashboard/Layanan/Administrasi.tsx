@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import SuratTidakMampuPreview from '../../letters/SuratTidakMampuPreview';
 import {
   Edit3, Trash2, Plus, ChevronLeft, ChevronRight, FileText, MessageSquare, User, Calendar, Eye, Search,
-  X, CheckCircle, XCircle, AlertCircle, Download, Clock, DollarSign
+  X, XCircle, Download, Clock, DollarSign, Send
 } from 'lucide-react';
 
 interface Service {
@@ -45,6 +46,17 @@ interface Request {
     id: number;
     name: string;
   };
+  generated_html_content?: string | null;
+  letter_input_data?: {
+    nama?: string;
+    nik?: string;
+    tempat_lahir?: string;
+    tanggal_lahir?: string;
+    jenis_kelamin?: string;
+    agama?: string;
+    pekerjaan?: string;
+    alamat?: string;
+  } | null;
 }
 
 interface CitizenData {
@@ -99,7 +111,6 @@ interface AdministrasiProps {
   apiFetch: (url: string, options?: RequestInit) => Promise<Response>;
   setAllRequests: React.Dispatch<React.SetStateAction<Request[]>>;
   citizensData: CitizenData[];
-  user: any; // User from useAuth needed for token
 }
 
 const Administrasi: React.FC<AdministrasiProps> = ({
@@ -116,7 +127,6 @@ const Administrasi: React.FC<AdministrasiProps> = ({
   apiFetch,
   setAllRequests,
   citizensData,
-  user
 }) => {
   const [servicesPage, setServicesPage] = useState(1);
   const [requestsPage, setRequestsPage] = useState(1);
@@ -128,8 +138,8 @@ const Administrasi: React.FC<AdministrasiProps> = ({
 
   const [showRequestDetailModal, setShowRequestDetailModal] = useState(false);
   const [requestDetailModalData, setRequestDetailModalData] = useState<Request | null>(null);
-  const [approvalFile, setApprovalFile] = useState<File | null>(null);
-  const [submittingApproval, setSubmittingApproval] = useState(false);
+
+  const [submitting, setSubmitting] = useState(false);
   const [responseText, setResponseText] = useState('');
   const [letterNumber, setLetterNumber] = useState('');
   const [letterData, setLetterData] = useState({
@@ -164,7 +174,26 @@ const Administrasi: React.FC<AdministrasiProps> = ({
   );
 
   useEffect(() => {
-    if (requestDetailModalData && requestDetailModalData.user) {
+    if (!requestDetailModalData) return;
+
+    // Prioritaskan data surat yang tersimpan di backend jika ada
+    if (requestDetailModalData.letter_input_data) {
+      const d = requestDetailModalData.letter_input_data;
+      setLetterData({
+        nama: d.nama || '',
+        nik: d.nik || '',
+        tempat_lahir: d.tempat_lahir || '',
+        tanggal_lahir: d.tanggal_lahir || '',
+        jenis_kelamin: d.jenis_kelamin || '',
+        agama: d.agama || '',
+        pekerjaan: d.pekerjaan || '',
+        alamat: d.alamat || '',
+      });
+      return;
+    }
+
+    // Kalau belum ada letter_input_data, fallback ke data warga berdasarkan nama pemohon
+    if (requestDetailModalData.user) {
       const citizen = citizensData.find(c => c.nama_lengkap === requestDetailModalData.user?.full_name);
       if (citizen) {
         setLetterData({
@@ -192,7 +221,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     setRequestDetailModalData(request);
     setShowRequestDetailModal(true);
     setResponseText('');
-    setApprovalFile(null);
+
     if (request.status === 'pending') {
       try {
         const token = localStorage.getItem('auth_token');
@@ -206,41 +235,47 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     }
   };
 
-  const handleVerify = async () => {
-    if (!responseText.trim()) {
-      alert('Mohon isi catatan sebelum memverifikasi.');
+  const handleGenerateLetter = async () => {
+    if (!letterNumber.trim() || !letterData.nama.trim() || !letterData.nik.trim()) {
+      alert('Mohon lengkapi Nomor Surat, Nama, dan NIK pada form Input Data Surat.');
       return;
     }
+    if (!confirm('Anda yakin data yang diinput sudah benar? Surat akan dibuat dan dikirim ke Kepala Desa untuk ditinjau.')) return;
 
-    setSubmittingApproval(true);
+    setSubmitting(true);
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await apiFetch(`/requests/${requestDetailModalData!.id}/status`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: 'operator_verified', response: responseText.trim() }),
-      });
+        const token = localStorage.getItem('auth_token');
+        const response = await apiFetch(`/requests/${requestDetailModalData!.id}/generate`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+                letter_data: letterData,
+                letter_number: letterNumber,
+            }),
+        });
 
-      if (response.ok) {
-        setAllRequests(prev => prev.map(req =>
-          req.id === requestDetailModalData!.id
-            ? { ...req, status: 'operator_verified', response: responseText.trim() }
-            : req
-        ));
-        setShowRequestDetailModal(false);
-        alert('Pengajuan berhasil diverifikasi!');
-      } else {
-        const errorData = await response.json();
-        alert(`Gagal memverifikasi pengajuan: ${errorData.message}`);
-      }
+        if (response.ok) {
+            const result = await response.json();
+            setAllRequests(prev => prev.map(req =>
+                req.id === requestDetailModalData!.id
+                    ? { ...req, status: 'kades_review', generated_html_content: result.request.generated_html_content }
+                    : req
+            ));
+            setShowRequestDetailModal(false);
+            alert('Surat berhasil dibuat dan dikirim untuk review Kepala Desa.');
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Gagal membuat surat.');
+        }
     } catch (error) {
-      console.error('Error verifying request:', error);
-      alert('Terjadi kesalahan saat memverifikasi pengajuan.');
+        console.error('Error generating letter:', error);
+        alert(`Terjadi kesalahan: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setSubmittingApproval(false);
+        setSubmitting(false);
     }
   };
 
@@ -251,7 +286,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     }
     if (!confirm('Apakah Anda yakin ingin menolak pengajuan ini?')) return;
 
-    setSubmittingApproval(true);
+    setSubmitting(true);
     try {
       const token = localStorage.getItem('auth_token');
       const response = await apiFetch(`/requests/${requestDetailModalData!.id}/reject`, {
@@ -278,50 +313,32 @@ const Administrasi: React.FC<AdministrasiProps> = ({
       console.error('Error rejecting request:', error);
       alert('Terjadi kesalahan saat menolak pengajuan.');
     } finally {
-      setSubmittingApproval(false);
+      setSubmitting(false);
     }
   };
 
-  const renderLetterTemplate = () => (
-    <div className="bg-white p-8 border border-gray-300 shadow-lg rounded-lg max-w-full">
-      <div className="text-center mb-8">
-        <h2 className="text-xl font-bold uppercase">Pemerintah Kabupaten Lampung Timur</h2>
-        <h3 className="text-lg font-semibold uppercase">Kecamatan Way Jepara</h3>
-        <h1 className="text-2xl font-bold uppercase">Desa Fajar Baru</h1>
-        <p className="text-sm">Alamat: Jl. Raya Lintas Pantai Timur, Fajar Baru, Way Jepara, Lampung Timur</p>
-      </div>
-      <div className="border-t-4 border-b-2 border-black my-4"></div>
-      <div className="text-center mb-6">
-        <p className="font-bold underline text-lg">SURAT KETERANGAN TIDAK MAMPU</p>
-        <p>Nomor: <span className="font-mono">{letterNumber || '...'}</span></p>
-      </div>
-      <div className="text-left space-y-4 text-sm">
-        <p>Yang bertanda tangan di bawah ini Kepala Desa Fajar Baru, Kecamatan Way Jepara, Kabupaten Lampung Timur, dengan ini menerangkan bahwa:</p>
-        <table className="w-full">
-          <tbody>
-            <tr><td className="w-1/3 pl-8">Nama</td><td>: <span className="font-semibold">{letterData.nama || '...'}</span></td></tr>
-            <tr><td className="pl-8">NIK</td><td>: {letterData.nik || '...'}</td></tr>
-            <tr><td className="pl-8">Tempat/Tgl. Lahir</td><td>: {letterData.tempat_lahir || '...'}, {letterData.tanggal_lahir || '...'}</td></tr>
-            <tr><td className="pl-8">Jenis Kelamin</td><td>: {letterData.jenis_kelamin || '...'}</td></tr>
-            <tr><td className="pl-8">Agama</td><td>: {letterData.agama || '...'}</td></tr>
-            <tr><td className="pl-8">Pekerjaan</td><td>: {letterData.pekerjaan || '...'}</td></tr>
-            <tr><td className="pl-8">Alamat</td><td>: {letterData.alamat || '...'}</td></tr>
-          </tbody>
-        </table>
-        <p>Berdasarkan pengamatan kami dan data yang ada, yang bersangkutan adalah benar warga Desa Fajar Baru dan tergolong dalam keluarga yang tidak mampu (ekonomi lemah).</p>
-        <p>Surat keterangan ini dibuat untuk keperluan <span className="font-semibold">{requestDetailModalData?.description || '...'}</span>.</p>
-        <p>Demikian Surat Keterangan Tidak Mampu ini dibuat untuk dapat dipergunakan sebagaimana mestinya.</p>
-      </div>
-      <div className="flex justify-end mt-12">
-        <div className="text-center">
-          <p>Fajar Baru, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-          <p>Kepala Desa Fajar Baru</p>
-          <br /><br /><br />
-          <p className="font-bold underline">(.........................)</p>
-        </div>
-      </div>
-    </div>
-  );
+  const renderLetterTemplate = () => {
+    if (!requestDetailModalData) return null;
+
+    // Use the operator's current input while the request is being processed
+    const isInProgress = requestDetailModalData.status === 'in_progress';
+    const isApproved = requestDetailModalData.status === 'approved';
+
+    const effectiveLetterNumber = isInProgress
+      ? letterNumber
+      : `470/${requestDetailModalData.id}/${new Date(requestDetailModalData.created_at).getFullYear()}`;
+
+    const qrFlag = isApproved ? 'approved' : null;
+
+    return (
+      <SuratTidakMampuPreview
+        letterNumber={effectiveLetterNumber}
+        letterData={letterData}
+        requestDescription={requestDetailModalData.description}
+        qrCode={qrFlag}
+      />
+    );
+  };
 
   const renderRequestDetailModal = () => {
     if (!showRequestDetailModal || !requestDetailModalData) return null;
@@ -433,24 +450,37 @@ const Administrasi: React.FC<AdministrasiProps> = ({
               </div>
             </div>
           </div>
-          <div className="sticky bottom-0 bg-gray-100 p-4 rounded-b-2xl border-t border-gray-200 flex gap-3">
-              <button
-                onClick={handleReject}
-                disabled={submittingApproval}
-                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg disabled:opacity-50"
-              >
-                <XCircle className="w-5 h-5" />
-                {submittingApproval ? 'Memproses...' : 'Tolak'}
-              </button>
-              <button
-                onClick={handleVerify}
-                disabled={submittingApproval}
-                className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg disabled:opacity-50"
-              >
-                <CheckCircle className="w-5 h-5" />
-                {submittingApproval ? 'Memproses...' : 'Verifikasi'}
-              </button>
+          <div className="sticky bottom-0 bg-gray-100 p-4 rounded-b-2xl border-t border-gray-200 flex justify-between items-center gap-3">
+            <div>
+              {requestDetailModalData.status === 'kades_review' && (
+                  <button onClick={() => window.open(`${import.meta.env.VITE_API_BASE_URL}/requests/${requestDetailModalData.id}/preview`, '_blank')}
+                      className="flex items-center gap-2 text-blue-600 font-semibold py-2 px-4 rounded-lg hover:bg-blue-100 transition-colors">
+                      <Eye className="w-5 h-5" />
+                      Preview di Tab Baru
+                  </button>
+              )}
             </div>
+            <div className="flex gap-3">
+                <button
+                    onClick={handleReject}
+                    disabled={submitting}
+                    className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg disabled:opacity-50"
+                >
+                    <XCircle className="w-5 h-5" />
+                    {submitting ? 'Memproses...' : 'Tolak Pengajuan'}
+                </button>
+                {requestDetailModalData.status === 'in_progress' && (
+                    <button
+                        onClick={handleGenerateLetter}
+                        disabled={submitting}
+                        className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg disabled:opacity-50"
+                    >
+                        <Send className="w-5 h-5" />
+                        {submitting ? 'Memproses...' : 'Generate & Kirim ke Kades'}
+                    </button>
+                )}
+            </div>
+          </div>
         </div>
       </div>
     );

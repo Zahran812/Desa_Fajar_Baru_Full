@@ -13,6 +13,7 @@ use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\LetterTemplateController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\CommentController;
+use App\Http\Controllers\LetterController;
 use App\Http\Controllers\Api\Dashboard\ArticleController as DashboardArticleController;
 
 
@@ -58,6 +59,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('letter-templates/service/{service}', [LetterTemplateController::class, 'indexByService']);
     Route::get('letter-templates/{letterTemplate}/download', [LetterTemplateController::class, 'download'])->name('letter-templates.download');
     Route::get('letter-templates/{letterTemplate}/preview-pdf', [LetterTemplateController::class, 'previewPdf'])->name('letter-templates.preview-pdf');
+    Route::get('letter-templates/{letterTemplate}/preview-html', [LetterTemplateController::class, 'previewHtml']);
     Route::post('letter-templates/{letterTemplate}/toggle-status', [LetterTemplateController::class, 'toggleStatus']);
     Route::put('letter-templates/{letterTemplate}', [LetterTemplateController::class, 'update']);
     Route::delete('letter-templates/{letterTemplate}', [LetterTemplateController::class, 'destroy']);
@@ -66,6 +68,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('requests', [RequestController::class, 'store']); // Mengirim pengajuan baru
     Route::get('requests/me', [RequestController::class, 'index']); // Melihat daftar pengajuan sendiri
     Route::get('requests/all', [RequestController::class, 'indexAll']); // Melihat semua pengajuan (admin/operator)
+    Route::get('requests/{request}', [RequestController::class, 'show']); // Melihat detail 1 pengajuan
     Route::put('requests/{id}/status', [RequestController::class, 'updateStatus']); // Update status ke in_progress
     Route::post('requests/{id}/approve', [RequestController::class, 'approve']); // Approve pengajuan
     Route::post('requests/{id}/verify', [RequestController::class, 'verify']); // Verify pengajuan
@@ -80,4 +83,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // --- Rute untuk Warga (memberi komentar) ---
     // Asumsi ada middleware 'role:citizen' untuk memeriksa peran user
     Route::post('/articles/{article}/comments', [CommentController::class, 'store']);
+
+    // Letter Generation Flow
+    Route::post('requests/{request}/generate', [LetterController::class, 'generate'])->name('requests.generate');
+    Route::get('requests/{request}/preview', [LetterController::class, 'preview'])->name('requests.preview');
+    Route::post('requests/{request}/sign', [LetterController::class, 'sign'])->name('requests.sign');
 });

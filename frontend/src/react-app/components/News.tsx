@@ -120,7 +120,7 @@ const News = () => {
           className={`text-center mb-12 transition-all duration-500 ${headerVisible ? 'animate-fade-up opacity-100' : 'opacity-100'}`}
         >
           <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">
-            Berita & Informasi
+            Berita & Informasi Desa Fajar Baru
           </h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Ikuti perkembangan terbaru dari Desa Fajar Baru

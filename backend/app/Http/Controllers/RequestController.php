@@ -471,4 +471,20 @@ class RequestController extends Controller
     }
 
     // Fungsi lain seperti show, update, delete dapat ditambahkan di sini.
+
+    /**
+     * Menampilkan detail satu pengajuan.
+     * Endpoint: GET /api/requests/{request}
+     */
+    public function show(Request $httpRequest, UserRequest $request)
+    {
+        $user = $httpRequest->user();
+
+        // Authorization: user can view their own request, or operator/kades/admin can view any.
+        if ($user->id !== $request->user_id && !in_array($user->role, ['operator', 'kades', 'admin'])) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json($request->load(['user', 'service', 'documents', 'outputs']));
+    }
 }

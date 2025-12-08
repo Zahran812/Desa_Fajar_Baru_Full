@@ -7,7 +7,7 @@ import {
   Clock, CheckCircle, Send,
   Bell, Edit, Download, Upload, X, CreditCard, MapPin,
   AlertCircle, XCircle, Loader2, CheckCircle2, Eye,
-  HelpCircle, Info, ChevronRight, CheckSquare
+  HelpCircle, Info, ChevronRight, CheckSquare, FileSignature
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
@@ -345,6 +345,7 @@ useEffect(() => {
         case 'approved': return 'bg-emerald-100 text-emerald-800';
         case 'rejected': return 'bg-red-100 text-red-800';
         case 'in_progress': return 'bg-blue-100 text-blue-800';
+        case 'kades_review': return 'bg-purple-100 text-purple-800';
         default: return 'bg-gray-100 text-gray-800';
       }
     };
@@ -352,9 +353,10 @@ useEffect(() => {
     const getStatusLabel = (status: string) => {
       switch (status) {
         case 'pending': return 'Sedang Dikirim';
+        case 'in_progress': return 'Sedang Diproses';
+        case 'kades_review': return 'Menunggu Persetujuan Kades';
         case 'approved': return 'Diterima';
         case 'rejected': return 'Ditolak';
-        case 'in_progress': return 'Sedang Diproses';
         default: return status;
       }
     };
@@ -362,9 +364,10 @@ useEffect(() => {
     const getStatusIcon = (status: string) => {
       switch (status) {
         case 'pending': return <Loader2 className="w-4 h-4 animate-spin" />;
+        case 'in_progress': return <Eye className="w-4 h-4" />;
+        case 'kades_review': return <FileSignature className="w-4 h-4" />;
         case 'approved': return <CheckCircle2 className="w-4 h-4" />;
         case 'rejected': return <XCircle className="w-4 h-4" />;
-        case 'in_progress': return <Eye className="w-4 h-4" />;
         default: return <AlertCircle className="w-4 h-4" />;
       }
     };

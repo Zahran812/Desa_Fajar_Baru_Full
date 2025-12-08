@@ -167,7 +167,7 @@ const Services = () => {
       <section id="pelayanan" className="py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">Layanan</h2>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">Layanan Desa Fajar Baru</h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
               Akses mudah dan cepat untuk berbagai layanan administrasi desa secara online
             </p>
@@ -196,7 +196,7 @@ const Services = () => {
       <section id="pelayanan" className="py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="text-center">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">Layanan</h2>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">Layanan Desa Fajar Baru</h2>
             <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-2xl mx-auto">
               <p className="text-red-600 mb-2">Gagal memuat layanan</p>
               <p className="text-sm text-gray-600">{error}</p>
@@ -219,7 +219,7 @@ const Services = () => {
       <section id="pelayanan" className="py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="text-center">
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">Layanan</h2>
+            <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">Layanan Desa Fajar Baru</h2>
             <p className="text-xl text-gray-600">Belum ada layanan yang tersedia saat ini.</p>
           </div>
         </div>
@@ -233,10 +233,10 @@ const Services = () => {
         {/* Header */}
         <div className="text-center mb-12">
           <h2 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-4">
-            Layanan
+            Layanan Desa Fajar Baru
           </h2>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Akses mudah dan cepat untuk berbagai layanan administrasi desa secara online
+            Akses mudah dan cepat untuk berbagai layanan administrasi Desa Fajar Baru secara online
           </p>
         </div>
 

@@ -335,4 +335,87 @@ class LetterTemplateController extends Controller
             ], 500);
         }
     }
+    public function previewHtml(LetterTemplate $letterTemplate)
+    {
+        try {
+            $dbPath = 'private/' . $letterTemplate->file_path;
+            $source = Storage::disk('local')->path($dbPath);
+
+            $zip = new \ZipArchive;
+            $zip->open($source);
+            $xml = $zip->getFromName('word/document.xml');
+
+            $dom = new \DOMDocument();
+            @$dom->loadXML($xml);
+
+            $body = $dom->getElementsByTagName('body')->item(0);
+
+            // Kata kunci mulai isi surat
+            $startKeyword = 'Yang bertanda tangan';
+
+            // Kata kunci yang harus dihapus, misalnya JL. RA BASYID dari word
+            $keywordsToRemove = [
+                'JL. RA. BASYID',
+                '35564',
+            ];
+
+            $removeUntilFound = true;
+            $toDelete = [];
+
+            foreach ($body->childNodes as $node) {
+                $text = $dom->saveXML($node);
+
+                // HAPUS header sampai ketemu isi surat
+                if ($removeUntilFound) {
+                    if (stripos($text, $startKeyword) !== false) {
+                        $removeUntilFound = false;
+                    } else {
+                        $toDelete[] = $node;
+                        continue;
+                    }
+                }
+
+                // HAPUS teks yang tidak diinginkan seperti "JL. RA. BASYID"
+                foreach ($keywordsToRemove as $kw) {
+                    if (stripos($text, $kw) !== false) {
+                        $toDelete[] = $node;
+                        continue 2;
+                    }
+                }
+
+                // HAPUS GAMBAR (termasuk tanda tangan kades)
+                if (strpos($text, '<w:drawing') !== false) {
+                    $toDelete[] = $node;
+                    continue;
+                }
+            }
+
+            // Delete nodes
+            foreach ($toDelete as $node) {
+                $body->removeChild($node);
+            }
+
+            // Save modified XML back to the DOCX
+            $zip->addFromString('word/document.xml', $dom->saveXML());
+            $zip->close();
+
+            // Convert with PHPWord
+            $phpWord = \PhpOffice\PhpWord\IOFactory::load($source);
+            $htmlWriter = \PhpOffice\PhpWord\IOFactory::createWriter($phpWord, 'HTML');
+
+            ob_start();
+            $htmlWriter->save("php://output");
+            $bodyHtml = ob_get_clean();
+
+            return response()->json([
+                'kop_html' => view('kop-surat.my-template')->render(),
+                'body_html' => $bodyHtml,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+
 }

@@ -16,7 +16,7 @@ interface UseContentAnimationOptions {
 
 const useContentAnimation = (options: UseContentAnimationOptions = {}) => {
   const [isVisible, setIsVisible] = useState(false);
-  const elementRef = useRef<HTMLElement>(null);
+  const elementRef = useRef<HTMLDivElement>(null);
   
   const { threshold = 0.1, delay = 0 } = options;
 
@@ -52,7 +52,7 @@ const useContentAnimation = (options: UseContentAnimationOptions = {}) => {
 
 const useStaggeredAnimation = (itemCount: number, delayPerItem: number = 100) => {
   const [visibleItems, setVisibleItems] = useState<boolean[]>(new Array(itemCount).fill(false));
-  const containerRef = useRef<HTMLElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Reset visibility when itemCount changes (e.g., on pagination)

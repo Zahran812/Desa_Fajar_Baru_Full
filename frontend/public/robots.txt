@@ -1,5 +1,5 @@
 # Robots.txt for Desa Fajar Baru Website
-# https://desafajarbaru.id
+# https://desafajarbaru.co
 
 User-agent: *
 Allow: /
@@ -19,7 +19,7 @@ Disallow: /login
 Disallow: /api/
 
 # Sitemap location
-Sitemap: https://desafajarbaru.id/sitemap.xml
+Sitemap: https://desafajarbaru.co/sitemap.xml
 
 # Crawl delay (optional, adjust if needed)
 Crawl-delay: 10

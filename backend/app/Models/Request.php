@@ -18,7 +18,14 @@ class Request extends Model
         'subject',
         'description',
         'status',
-        'response'
+        'response',
+        'letter_input_data',
+        'generated_html_content',
+    ];
+
+    protected $casts = [
+        'letter_input_data' => 'array',
+        'generated_html_content' => 'string',
     ];
     
     // Nama tabel yang benar adalah 'requests'

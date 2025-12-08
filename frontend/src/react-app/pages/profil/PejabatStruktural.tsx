@@ -6,14 +6,14 @@ const formatUrl = (folder: string, file: string) => {
   return `${import.meta.env.BASE_URL}pejabat-dan-struktural/${folder}/${file}`;
 };
 const kepalaDusunList = [
-  { name: 'Suryadi', dusun: 'Dusun 1' },
-  { name: 'Junaidi, S.H', dusun: 'Dusun 2A' },
-  { name: 'Ahmad Isnadi', dusun: 'Dusun 2B' },
-  { name: 'Suroso Waris', dusun: 'Dusun 3A' },
-  { name: 'Paino', dusun: 'Dusun 3B' },
-  { name: 'Mujiyo', dusun: 'Dusun 4' },
-  { name: 'Apriyanto', dusun: 'Dusun 5' },
-  { name: 'Sumber Hidayat', dusun: 'Dusun 6' }
+  { name: 'Suryadi', dusun: 'Dusun I', photo: 'SURYADI KEPALA DUSUN I.jpeg' },
+  { name: 'Junaidi, S.H', dusun: 'Dusun II A', photo: undefined },
+  { name: 'Ahmad Isnadi', dusun: 'Dusun II B', photo: 'DUSUN IIB.jpg' },
+  { name: 'Suroso Waris', dusun: 'Dusun III A', photo: 'SUROSO WARI KEPALA DUSUN III.A.jpeg' },
+  { name: 'Paino', dusun: 'Dusun III B', photo: 'KEPALA DUSUN III.B.jpeg' },
+  { name: 'Mujiyo', dusun: 'Dusun IV', photo: 'KEPALA DUSUN IV.jpeg' },
+  { name: 'Apriyanto', dusun: 'Dusun V', photo: 'APRIYANTO KEPALA DUSUN V.jpeg' },
+  { name: 'Sumber Hidayat', dusun: 'Dusun VI', photo: undefined }
 ];
 
 const kepalaSeksiList = [
@@ -102,7 +102,7 @@ const PejabatStruktural = () => {
                     <div className="relative inline-block">
                       <div className="w-72 h-80 md:w-80 md:h-96 lg:w-72 lg:h-80 xl:w-80 xl:h-96 mx-auto lg:mx-0 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border-4 md:border-6 border-white/80 backdrop-blur-sm relative">
                         <img 
-                          src="https://mocha-cdn.com/0199a380-4422-7144-b053-fdf82f04e8e4/image.png_4953.png" 
+                          src={formatUrl('', 'kades.png')}
                           alt="M. Agus Budiantoro, S.HI - Kepala Desa Fajar Baru"
                           className="w-full h-full object-cover object-center hover:scale-105 transition-transform duration-700"
                         />
@@ -211,17 +211,30 @@ const PejabatStruktural = () => {
                     <h4 className="text-base md:text-lg lg:text-xl font-bold text-gray-800 mb-1">Kepala Dusun</h4>
                     <p className="text-gray-600 text-xs md:text-sm">Pemimpin wilayah dusun</p>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-3 md:space-y-4">
                     {kepalaDusunList.map((member, idx) => (
                       <div
                         key={`${member.name}-${idx}`}
-                        className="flex items-center justify-between rounded-2xl p-3 md:p-4 text-left shadow-inner bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-100"
+                        className="flex items-center gap-3 rounded-2xl p-3 md:p-4 text-left shadow-inner bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-100"
                       >
-                        <div>
+                        <div className="w-14 h-14 md:w-16 md:h-16 rounded-full overflow-hidden bg-emerald-100 flex-shrink-0 flex items-center justify-center">
+                          {member.photo ? (
+                            <img
+                              src={formatUrl('kepala-dusun', member.photo)}
+                              alt={member.name}
+                              className="w-full h-full object-cover object-center"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="text-sm md:text-base font-bold text-emerald-700">
+                              {member.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
                           <p className="font-semibold text-gray-900 text-sm md:text-base truncate">{member.name}</p>
                           <p className="text-xs md:text-sm text-gray-600">{member.dusun}</p>
                         </div>
-                        <div className="text-emerald-600 text-sm font-bold">RT</div>
                       </div>
                     ))}
                   </div>
@@ -260,9 +273,12 @@ const PejabatStruktural = () => {
                   <div className="relative z-10">
                     <div className="text-center mb-6">
                       <div className="w-32 h-36 md:w-40 md:h-44 mx-auto rounded-2xl overflow-hidden shadow-xl border-4 border-white/80 backdrop-blur-sm relative bg-gradient-to-br from-blue-100 to-cyan-100">
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Users className="w-16 h-16 md:w-20 md:h-20 text-blue-400" />
-                        </div>
+                        <img
+                          src={formatUrl('badan-permusyawaratan-desa', 'YAHYA AMTO KETUA BPD.jpeg')}
+                          alt="Yahya Amto - Ketua BPD"
+                          className="w-full h-full object-cover object-center"
+                          loading="lazy"
+                        />
                       </div>
                       
                       <div className="mt-4">
@@ -297,8 +313,13 @@ const PejabatStruktural = () => {
                 <div className="space-y-6">
                   <div className="bg-white rounded-xl p-6 shadow-lg border-2 border-blue-200 hover:shadow-xl hover:border-blue-300 transition-all">
                     <div className="text-center">
-                      <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 flex items-center justify-center border-4 border-white shadow-md">
-                        <Award className="w-10 h-10 text-blue-600" />
+                      <div className="w-24 h-24 md:w-28 md:h-28 mx-auto mb-4 rounded-full overflow-hidden bg-gradient-to-br from-blue-100 to-cyan-100 border-4 border-white shadow-md">
+                        <img
+                          src={formatUrl('badan-permusyawaratan-desa', 'AGUS SUTRISNO WAKIL BPD.jpeg')}
+                          alt="Agus Sutrisno - Wakil Ketua BPD"
+                          className="w-full h-full object-cover object-center"
+                          loading="lazy"
+                        />
                       </div>
                       <div className="inline-block bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-2 rounded-full mb-3 text-sm font-bold">Wakil Ketua</div>
                       <h4 className="text-xl font-bold text-gray-800 mb-1">Agus Sutrisno</h4>
@@ -308,8 +329,13 @@ const PejabatStruktural = () => {
 
                   <div className="bg-white rounded-xl p-6 shadow-lg border-2 border-blue-200 hover:shadow-xl hover:border-blue-300 transition-all">
                     <div className="text-center">
-                      <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 flex items-center justify-center border-4 border-white shadow-md">
-                        <Building2 className="w-10 h-10 text-blue-600" />
+                      <div className="w-24 h-24 md:w-28 md:h-28 mx-auto mb-4 rounded-full overflow-hidden bg-gradient-to-br from-blue-100 to-cyan-100 border-4 border-white shadow-md">
+                        <img
+                          src={formatUrl('badan-permusyawaratan-desa', 'SUPRIYATNO SEKRETARIS BPD.jpeg')}
+                          alt="Supriyatno - Sekretaris BPD"
+                          className="w-full h-full object-cover object-center"
+                          loading="lazy"
+                        />
                       </div>
                       <div className="inline-block bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-4 py-2 rounded-full mb-3 text-sm font-bold">Sekretaris</div>
                       <h4 className="text-xl font-bold text-gray-800 mb-1">Supriyatno</h4>
@@ -323,15 +349,31 @@ const PejabatStruktural = () => {
                 <h4 className="text-xl font-bold text-gray-800">Anggota BPD</h4>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {['Warish', 'Sahrowi', 'Ahmad Sanuri', 'Dewi Safitri', 'Diah Ayu Wulandari', 'Widya Wati'].map((name, idx) => (
-                  <div key={idx} className="bg-blue-50 rounded-lg p-3 border-l-3 border-blue-500 hover:bg-blue-100 transition-colors">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[ 
+                  { name: 'Warish', file: 'WARISAH.jpeg' },
+                  { name: 'Sahrowi', file: 'SAHROWI.jpeg' },
+                  { name: 'Ahmad Sanuri', file: 'SANURI.jpeg' },
+                  { name: 'Dewi Safitri', file: undefined },
+                  { name: 'Diah Ayu Wulandari', file: 'DIAH AYU WULANDARI.jpeg' },
+                  { name: 'Widya Wati', file: undefined }
+                ].map((member, idx) => (
+                  <div key={idx} className="bg-blue-50 rounded-lg p-3 border-l-4 border-blue-500 hover:bg-blue-100 transition-colors shadow-sm">
                     <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-md flex items-center justify-center flex-shrink-0">
-                        <Users className="w-4 h-4 text-blue-600" />
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        {member.file ? (
+                          <img
+                            src={formatUrl('badan-permusyawaratan-desa', member.file)}
+                            alt={member.name}
+                            className="w-full h-full object-cover object-center"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <Users className="w-6 h-6 text-blue-600" />
+                        )}
                       </div>
                       <div>
-                        <h5 className="font-bold text-gray-800 text-sm">{name}</h5>
+                        <h5 className="font-bold text-gray-800 text-sm">{member.name}</h5>
                         <p className="text-blue-600 text-xs font-medium">Anggota BPD</p>
                       </div>
                     </div>
@@ -367,9 +409,12 @@ const PejabatStruktural = () => {
                   <div className="lg:col-span-2 text-center lg:text-left">
                     <div className="relative inline-block">
                       <div className="w-72 h-80 md:w-80 md:h-96 lg:w-72 lg:h-80 xl:w-80 xl:h-96 mx-auto lg:mx-0 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl border-4 md:border-6 border-white/80 backdrop-blur-sm relative bg-gradient-to-br from-emerald-100 to-teal-100">
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Heart className="w-32 h-32 text-emerald-400" />
-                        </div>
+                        <img
+                          src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'ketua-pkk.png')}
+                          alt="Eni Triyani, S.Pd - Ketua PKK"
+                          className="w-full h-full object-cover object-center"
+                          loading="lazy"
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent"></div>
                       </div>
                       
@@ -398,6 +443,41 @@ const PejabatStruktural = () => {
                         <p className="text-lg text-gray-600">Pemberdayaan Kesejahteraan Keluarga</p>
                       </div>
 
+                      {/* Sekretaris & Bendahara PKK - Photo Row */}
+                      <div className="mt-6 flex flex-wrap gap-4 justify-center lg:justify-start">
+                        {/* Sekretaris: Suryani */}
+                        <div className="flex items-center gap-3 bg-white/70 rounded-xl px-3 py-2 shadow-sm border border-emerald-100">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-emerald-50 flex items-center justify-center">
+                            <img
+                              src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'Suryani.jpeg')}
+                              alt="Suryani - Sekretaris PKK"
+                              className="w-full h-full object-cover object-center"
+                              loading="lazy"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800 leading-tight">Suryani</p>
+                            <p className="text-xs text-emerald-600">Sekretaris PKK</p>
+                          </div>
+                        </div>
+
+                        {/* Bendahara: Herliana (file Herlina.jpeg) */}
+                        <div className="flex items-center gap-3 bg-white/70 rounded-xl px-3 py-2 shadow-sm border border-emerald-100">
+                          <div className="w-12 h-12 rounded-full overflow-hidden bg-emerald-50 flex items-center justify-center">
+                            <img
+                              src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'Herlina.jpeg')}
+                              alt="Herliana - Bendahara PKK"
+                              className="w-full h-full object-cover object-center"
+                              loading="lazy"
+                            />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800 leading-tight">Herliana</p>
+                            <p className="text-xs text-emerald-600">Bendahara PKK</p>
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Quote */}
                       <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl p-6 border-l-4 border-emerald-500">
                         <blockquote className="text-lg md:text-xl text-gray-700 italic font-medium leading-relaxed">
@@ -416,32 +496,80 @@ const PejabatStruktural = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-emerald-500">
-                  <h5 className="font-bold text-gray-800 mb-2">Ketua Pokja I: Nurmi</h5>
-                  <p className="text-sm text-gray-600">Anggota: Tri Wahita Hanuji, Fera Hernani, Salbiyah</p>
+                {/* Pokja I - Nurmi */}
+                <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-emerald-500 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-emerald-50 flex-shrink-0 flex items-center justify-center">
+                    <img
+                      src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'Nurmi.jpeg')}
+                      alt="Nurmi - Ketua Pokja I"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-gray-800 mb-1">Ketua Pokja I: Nurmi</h5>
+                    <p className="text-sm text-gray-600">Anggota: Tri Wahita Hanuji, Fera Hernani, Salbiyah</p>
+                  </div>
                 </div>
-                <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-teal-500">
-                  <h5 className="font-bold text-gray-800 mb-2">Ketua Pokja II: Dewi Apriyani</h5>
-                  <p className="text-sm text-gray-600">Anggota: Sukilah, Siti Aisyah, Yolan Yusnia</p>
+
+                {/* Pokja II - Dewi Apriyani */}
+                <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-teal-500 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-teal-50 flex-shrink-0 flex items-center justify-center">
+                    <img
+                      src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'Dewi Apriyani.jpeg')}
+                      alt="Dewi Apriyani - Ketua Pokja II"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-gray-800 mb-1">Ketua Pokja II: Dewi Apriyani</h5>
+                    <p className="text-sm text-gray-600">Anggota: Sukilah, Siti Aisyah, Yolan Yusnia</p>
+                  </div>
                 </div>
+
+                {/* Pokja III - tetap teks (belum ada foto khusus) */}
                 <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-emerald-500">
                   <h5 className="font-bold text-gray-800 mb-2">Ketua Pokja III: Illa Nurohmah, S.Ag</h5>
                   <p className="text-sm text-gray-600">Anggota: Hermin Susiloningsih, Tumiyem, Rosita Rahmawati</p>
                 </div>
-                <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-teal-500">
-                  <h5 className="font-bold text-gray-800 mb-2">Ketua Pokja IV: Hayati</h5>
-                  <p className="text-sm text-gray-600">Anggota: Ponisih, Jamsah, Suhamah</p>
+
+                {/* Pokja IV - Hayati */}
+                <div className="bg-white rounded-lg p-4 shadow-md border-l-4 border-teal-500 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-teal-50 flex-shrink-0 flex items-center justify-center">
+                    <img
+                      src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'Hayati.jpeg')}
+                      alt="Hayati - Ketua Pokja IV"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-gray-800 mb-1">Ketua Pokja IV: Hayati</h5>
+                    <p className="text-sm text-gray-600">Anggota: Ponisih, Jamsah, Suhamah</p>
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-4 border-2 border-emerald-200">
-                  <div className="text-center">
+                {/* UP2K - Fitri Yani */}
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-lg p-4 border-2 border-emerald-200 flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-emerald-100 flex-shrink-0 flex items-center justify-center">
+                    <img
+                      src={formatUrl('pemberdayaan-kesejahteraan-keluarga', 'Fitri Yani.jpeg')}
+                      alt="Fitri Yani - Ketua UP2K"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="text-left">
                     <p className="text-sm font-bold text-emerald-700 mb-1">UP2K</p>
                     <h5 className="font-bold text-gray-800 text-sm">Ketua: Fitri Yani</h5>
                     <p className="text-xs text-gray-600">Anggota: Nurwailah</p>
                   </div>
                 </div>
+
+                {/* Dasa Wisma - tetap teks */}
                 <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-lg p-4 border-2 border-teal-200">
                   <div className="text-center">
                     <p className="text-sm font-bold text-teal-700 mb-1">Dasa Wisma</p>
@@ -467,10 +595,16 @@ const PejabatStruktural = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* Melati 1 - Suhamah */}
               <div className="bg-white rounded-xl shadow-lg p-5 border-2 border-pink-100">
                 <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
-                    <Baby className="w-5 h-5 text-pink-600" />
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-pink-100 flex items-center justify-center">
+                    <img
+                      src={formatUrl('kader-posyandu', 'SUHAMAH KETUA POSYANDU MELATI 1.jpeg')}
+                      alt="Suhamah - Ketua Posyandu Melati 1"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-800">Melati 1</h4>
@@ -483,10 +617,16 @@ const PejabatStruktural = () => {
                 <p className="text-xs text-gray-600">Anggota: Ita Yunita, Sanah, Novi Anggraeni, Fitri Akvaleni</p>
               </div>
 
+              {/* Melati 2 - Sutiyah */}
               <div className="bg-white rounded-xl shadow-lg p-5 border-2 border-pink-100">
                 <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-10 h-10 bg-rose-100 rounded-lg flex items-center justify-center">
-                    <Baby className="w-5 h-5 text-rose-600" />
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-rose-100 flex items-center justify-center">
+                    <img
+                      src={formatUrl('kader-posyandu', 'SUTIYAH KETUA POSYANDU MELATI 2 DUSUN 2A DAN 3A.jpeg')}
+                      alt="Sutiyah - Ketua Posyandu Melati 2"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-800">Melati 2</h4>
@@ -499,10 +639,16 @@ const PejabatStruktural = () => {
                 <p className="text-xs text-gray-600">Anggota: Suci Dwi Lestari, Pepri Sri Wahyuni, Karyati, Siti Aisyah</p>
               </div>
 
+              {/* Dahlia - Herliana */}
               <div className="bg-white rounded-xl shadow-lg p-5 border-2 border-pink-100">
                 <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
-                    <Baby className="w-5 h-5 text-pink-600" />
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-pink-100 flex items-center justify-center">
+                    <img
+                      src={formatUrl('kader-posyandu', 'HERLIANA KETUA POSYANDU DAHLIA DUSUN III.B.jpeg')}
+                      alt="Herliana - Ketua Posyandu Dahlia"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-800">Dahlia</h4>
@@ -515,10 +661,16 @@ const PejabatStruktural = () => {
                 <p className="text-xs text-gray-600">Anggota: Jariah, Iin Sumarni, Suryani, Nurlaila</p>
               </div>
 
+              {/* Melati 3 - Upami */}
               <div className="bg-white rounded-xl shadow-lg p-5 border-2 border-pink-100">
                 <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-10 h-10 bg-rose-100 rounded-lg flex items-center justify-center">
-                    <Baby className="w-5 h-5 text-rose-600" />
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-rose-100 flex items-center justify-center">
+                    <img
+                      src={formatUrl('kader-posyandu', 'UPAMI KETUA POSYANDU MELATI 4 DUSUN 4.jpeg')}
+                      alt="Upami - Ketua Posyandu Melati 3"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-800">Melati 3</h4>
@@ -531,10 +683,16 @@ const PejabatStruktural = () => {
                 <p className="text-xs text-gray-600">Anggota: Sutati, Agustini, Sugiarti, Sukarmi</p>
               </div>
 
+              {/* Melati 4 - Indra Susanti */}
               <div className="bg-white rounded-xl shadow-lg p-5 border-2 border-pink-100">
                 <div className="flex items-center space-x-3 mb-3">
-                  <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
-                    <Baby className="w-5 h-5 text-pink-600" />
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-pink-100 flex items-center justify-center">
+                    <img
+                      src={formatUrl('kader-posyandu', 'INDRA SUSANTI KETUA POSYANDU MELATI 3 DUSUN 5.jpeg')}
+                      alt="Indra Susanti - Ketua Posyandu Melati 4"
+                      className="w-full h-full object-cover object-center"
+                      loading="lazy"
+                    />
                   </div>
                   <div>
                     <h4 className="font-bold text-gray-800">Melati 4</h4>

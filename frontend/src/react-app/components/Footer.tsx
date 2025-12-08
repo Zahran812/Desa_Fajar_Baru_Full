@@ -62,6 +62,18 @@ const Footer = () => {
                 </a>
               ))}
             </div>
+
+            <div className="mt-4">
+              <a
+                href="/docs/panduan-user-v1.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 text-xs font-medium rounded-lg border border-emerald-500 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-colors duration-200 bg-gray-900/40"
+                download
+              >
+                Panduan Pengguna
+              </a>
+            </div>
           </div>
 
           {/* Website Traffic Statistics */}
@@ -157,24 +169,23 @@ const Footer = () => {
                 <MapPin className="w-5 h-5 text-village-green mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="text-gray-300 text-sm">
-                    Jl. Raya Fajar Baru No. 123<br />
-                    Kec. Way Sulan, Lampung Selatan<br />
-                    Lampung 35365
+                    Jl. R.A. Basyid, Fajar Baru, Kec. Jati Agung,<br />
+                    Kabupaten Lampung Selatan, Lampung 35141
                   </p>
                 </div>
               </div>
               
               <div className="flex items-center space-x-3">
                 <Phone className="w-5 h-5 text-village-green" />
-                <a href="tel:+62721123456" className="text-gray-300 hover:text-village-green text-sm">
-                  (0721) 123-456
+                <a href="tel:+6285768514691" className="text-gray-300 hover:text-village-green text-sm">
+                  +62 857-6851-4691
                 </a>
               </div>
               
               <div className="flex items-center space-x-3">
                 <Mail className="w-5 h-5 text-village-green" />
-                <a href="mailto:admin@desafajarbaru.id" className="text-gray-300 hover:text-village-green text-sm">
-                  admin@desafajarbaru.id
+                <a href="mailto:desafajarbaru.jatiagung@gmail.com" className="text-gray-300 hover:text-village-green text-sm">
+                  desafajarbaru.jatiagung@gmail.com
                 </a>
               </div>
               
@@ -182,8 +193,7 @@ const Footer = () => {
                 <Clock className="w-5 h-5 text-village-green mt-0.5" />
                 <div className="text-gray-300 text-sm">
                   <p>Senin - Jumat: 08:00 - 16:00</p>
-                  <p>Sabtu: 08:00 - 12:00</p>
-                  <p>Minggu: Tutup</p>
+                  <p>Sabtu dan Minggu: Tutup</p>
                 </div>
               </div>
             </div>

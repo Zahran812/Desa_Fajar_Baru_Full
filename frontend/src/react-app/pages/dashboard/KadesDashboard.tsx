@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '@/react-app/lib/api';
 import { useAuth } from '@/react-app/contexts/AuthContext';
 import DashboardLayout from '@/react-app/components/DashboardLayout';
+import SuratTidakMampuPreview from '@/react-app/components/letters/SuratTidakMampuPreview';
 import {
   Home, FileText, CheckCircle, XCircle, Loader2,
   FileSignature, FileCheck, FileX, FileClock,
-  Download, Eye, BarChart2, Users, Archive,
+  Eye, BarChart2, Archive, X, User
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -13,6 +14,17 @@ interface DocumentItem {
   id: number;
   required_name: string;
   original_name: string;
+}
+
+interface LetterInputData {
+    nama: string;
+    nik: string;
+    tempat_lahir: string;
+    tanggal_lahir: string;
+    jenis_kelamin: string;
+    agama: string;
+    pekerjaan: string;
+    alamat: string;
 }
 
 interface Request {
@@ -37,6 +49,7 @@ interface Request {
     id: number;
     name: string;
   };
+  letter_input_data?: LetterInputData;
 }
 
 const KadesDashboard = () => {
@@ -53,8 +66,13 @@ const KadesDashboard = () => {
   });
   const [allRequests, setAllRequests] = useState<Request[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+  const [detailedRequest, setDetailedRequest] = useState<Request | null>(null);
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [loadingModal, setLoadingModal] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (!authLoading && user?.role !== 'kades') {
@@ -79,23 +97,17 @@ const KadesDashboard = () => {
 
       const data = await response.json();
       const items = Array.isArray(data.requests) ? data.requests : [];
-
-      const validItems = items.filter((item: Request) =>
-        item && typeof item === 'object' && 'id' in item && 'status' in item &&
-        item.user && typeof item.user === 'object' && 'full_name' in item.user &&
-        item.service && typeof item.service === 'object' && 'name' in item.service
-      );
       
-      const sortedRequests = validItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const sortedRequests = items.sort((a: Request, b: Request) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setAllRequests(sortedRequests);
 
       setStats({
         totalRequests: sortedRequests.length,
-        pendingRequests: sortedRequests.filter(r => r.status === 'pending').length,
-        approvedRequests: sortedRequests.filter(r => r.status === 'approved').length,
-        rejectedRequests: sortedRequests.filter(r => r.status === 'rejected').length,
-        completedRequests: sortedRequests.filter(r => r.status === 'completed').length,
-        inProcessRequests: sortedRequests.filter(r => r.status === 'processed').length
+        pendingRequests: sortedRequests.filter((r: Request) => r.status === 'kades_review').length,
+        approvedRequests: sortedRequests.filter((r: Request) => r.status === 'approved').length,
+        rejectedRequests: sortedRequests.filter((r: Request) => r.status === 'rejected').length,
+        completedRequests: sortedRequests.filter((r: Request) => r.status === 'completed').length,
+        inProcessRequests: sortedRequests.filter((r: Request) => r.status === 'in_progress').length,
       });
 
     } catch (error) {
@@ -114,20 +126,18 @@ const KadesDashboard = () => {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'requests', label: 'Daftar Pengajuan', icon: FileText, badge: stats.pendingRequests },
+    { id: 'requests', label: 'Review Pengajuan', icon: FileText, badge: stats.pendingRequests },
   ];
 
-  const formatDate = (dateString: string) => {
-    const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
-    return new Date(dateString).toLocaleDateString('id-ID', options);
-  };
+
   
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'pending': return 'bg-gray-100 text-gray-800';
+      case 'in_progress': return 'bg-cyan-100 text-cyan-800';
+      case 'kades_review': return 'bg-yellow-100 text-yellow-800';
       case 'approved': return 'bg-emerald-100 text-emerald-800';
       case 'rejected': return 'bg-red-100 text-red-800';
-      case 'processed': return 'bg-blue-100 text-blue-800'; // Renamed from in_progress
       case 'completed': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -135,10 +145,11 @@ const KadesDashboard = () => {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'pending': return 'Menunggu';
+      case 'pending': return 'Pending';
+      case 'in_progress': return 'Diproses Operator';
+      case 'kades_review': return 'Menunggu TTD Kades';
       case 'approved': return 'Disetujui';
       case 'rejected': return 'Ditolak';
-      case 'processed': return 'Diproses';
       case 'completed': return 'Selesai';
       default: return status;
     }
@@ -146,48 +157,113 @@ const KadesDashboard = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pending': return <FileSignature className="w-4 h-4" />;
+      case 'in_progress': return <FileClock className="w-4 h-4" />;
+      case 'kades_review': return <FileSignature className="w-4 h-4" />;
       case 'approved': return <FileCheck className="w-4 h-4" />;
       case 'rejected': return <FileX className="w-4 h-4" />;
-      case 'processed': return <FileClock className="w-4 h-4" />;
       case 'completed': return <Archive className="w-4 h-4" />;
       default: return <FileText className="w-4 h-4" />;
     }
   };
 
-  const handleViewRequest = (request: Request) => {
+  const handleViewRequest = async (request: Request) => {
     setSelectedRequest(request);
     setShowRequestModal(true);
+    setLoadingModal(true);
+    setQrCode(null); // Reset QR code before loading details
+    try {
+        const token = localStorage.getItem('auth_token');
+        const response = await apiFetch(`/requests/${request.id}`, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/json',
+            },
+        });
+        if (!response.ok) {
+            throw new Error('Gagal mengambil detail pengajuan');
+        }
+        const data = await response.json();
+        setDetailedRequest(data);
+
+        // If the request is already approved, show the dummy QR in preview
+        if (data.status === 'approved') {
+          setQrCode('approved');
+        } else {
+          setQrCode(null);
+        }
+    } catch (error) {
+        console.error('Error fetching request details:', error);
+        alert(error instanceof Error ? error.message : 'Terjadi kesalahan');
+        setShowRequestModal(false);
+    } finally {
+        setLoadingModal(false);
+    }
   };
 
-  const handleUpdateStatus = async (status: string) => {
+  const handleSign = async () => {
     if (!selectedRequest) return;
+    if (!confirm('Apakah Anda yakin ingin menyetujui dan menandatangani surat ini?')) return;
     
-    setLoadingRequests(true);
+    setSubmittingAction(true);
     try {
       const token = localStorage.getItem('auth_token');
-      // Endpoint to update status by Kades
-      const response = await apiFetch(`/requests/${selectedRequest.id}/status/kades`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status, response: `Status diperbarui oleh Kepala Desa` }),
+      const response = await apiFetch(`/requests/${selectedRequest.id}/sign`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'No JSON response' }));
+        console.error('Backend Error Response:', response.status, errorData);
+        throw new Error(`Gagal menandatangani surat: ${errorData.message || response.statusText}`);
+      }
+      
+      await response.json();
+      // We only need a flag to show the dummy QR PNG in the preview
+      setQrCode('signed');
+
+      alert('Surat berhasil disetujui dan ditandatangani. Silakan tutup modal ini.');
+      await fetchAllRequests(); // Refresh list in the background
+      // Don't close modal, let Kades see the signed letter
+    } catch (error) {
+      console.error('Error signing request:', error);
+      alert(error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!selectedRequest || !rejectionReason.trim()) {
+      alert('Mohon isi alasan penolakan.');
+      return;
+    }
+    if (!confirm('Apakah Anda yakin ingin menolak pengajuan ini?')) return;
+
+    setSubmittingAction(true);
+    try {
+      const token = localStorage.getItem('auth_token');
+      await apiFetch(`/requests/${selectedRequest.id}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ response: rejectionReason.trim() }),
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Gagal memperbarui status');
-      }
-
       await fetchAllRequests();
       setShowRequestModal(false);
+      alert('Pengajuan berhasil ditolak.');
     } catch (error) {
-      console.error('Error updating request status:', error);
-      alert(`Gagal memperbarui status: ${error instanceof Error ? error.message : 'Error tidak diketahui'}`);
+      console.error('Error rejecting request:', error);
+      alert('Gagal menolak pengajuan.');
     } finally {
-      setLoadingRequests(false);
+      setSubmittingAction(false);
     }
   };
 
@@ -200,22 +276,19 @@ const KadesDashboard = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {[
-          { title: 'Total Pengajuan', value: stats.totalRequests, icon: BarChart2, color: 'blue' },
           { title: 'Menunggu Persetujuan', value: stats.pendingRequests, icon: FileSignature, color: 'yellow' },
+          { title: 'Total Pengajuan', value: stats.totalRequests, icon: BarChart2, color: 'blue' },
           { title: 'Pengajuan Disetujui', value: stats.approvedRequests, icon: FileCheck, color: 'emerald' },
-          { title: 'Pengajuan Ditolak', value: stats.rejectedRequests, icon: FileX, color: 'red' },
-          { title: 'Sedang Diproses', value: stats.inProcessRequests, icon: FileClock, color: 'blue' },
-          { title: 'Pengajuan Selesai', value: stats.completedRequests, icon: Archive, color: 'purple' },
         ].map(item => {
           const Icon = item.icon;
           return (
-            <div key={item.title} className="bg-white rounded-xl p-6 border border-gray-200">
+            <div key={item.title} className={`bg-white rounded-xl p-6 border-l-4 border-${item.color}-500 shadow-sm`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">{item.title}</p>
-                  <p className="text-2xl font-bold text-gray-900">{item.value}</p>
+                  <p className="text-3xl font-bold text-gray-900">{item.value}</p>
                 </div>
-                <div className={`w-12 h-12 bg-${item.color}-50 rounded-lg flex items-center justify-center`}>
+                <div className={`w-12 h-12 bg-${item.color}-50 rounded-full flex items-center justify-center`}>
                   <Icon className={`w-6 h-6 text-${item.color}-600`} />
                 </div>
               </div>
@@ -226,16 +299,11 @@ const KadesDashboard = () => {
 
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Pengajuan Terbaru</h3>
-            <button onClick={() => setActiveTab('requests')} className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-              Lihat semua →
-            </button>
-          </div>
+          <h3 className="text-lg font-semibold text-gray-900">Pengajuan Menunggu Persetujuan</h3>
         </div>
         
         <div className="p-6">
-          {loading ? <p>Memuat...</p> : <RequestTable requests={allRequests.slice(0, 5)} onView={handleViewRequest} />}
+          {loading ? <p>Memuat...</p> : <RequestTable requests={allRequests.filter(r => r.status === 'kades_review')} onView={handleViewRequest} />}
         </div>
       </div>
     </div>
@@ -255,7 +323,7 @@ const KadesDashboard = () => {
       {requests.length === 0 ? (
         <div className="text-center py-8">
           <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">Belum ada pengajuan</p>
+          <p className="text-gray-500">Tidak ada pengajuan</p>
         </div>
       ) : (
         <table className="w-full">
@@ -298,13 +366,114 @@ const KadesDashboard = () => {
       )}
     </div>
   );
-
+  
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return renderDashboard();
       case 'requests': return renderRequestsList();
       default: return renderDashboard();
     }
+  };
+
+  const renderRequestDetailModal = () => {
+    if (!showRequestModal || !selectedRequest) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowRequestModal(false)}>
+        <div className="bg-gray-50 rounded-2xl shadow-2xl max-w-7xl w-full max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <div className="sticky top-0 bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-5 rounded-t-2xl z-10">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center"><FileSignature className="w-6 h-6" /></div>
+                  <div>
+                    <h3 className="text-2xl font-bold">Review dan Tanda Tangan</h3>
+                    <p className="text-yellow-100 text-sm">Pengajuan: {selectedRequest.subject}</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRequestModal(false)} className="text-white hover:bg-white/20 p-2 rounded-lg transition-colors"><X className="w-6 h-6" /></button>
+            </div>
+          </div>
+          
+          <div className="flex-grow overflow-y-auto p-6">
+            {loadingModal ? (
+                <div className="flex justify-center items-center h-full">
+                    <Loader2 className="w-12 h-12 animate-spin text-yellow-500" />
+                </div>
+            ) : !detailedRequest ? (
+                <div className="text-center p-8 text-gray-600">Gagal memuat detail pengajuan.</div>
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left Column: Preview */}
+                    <div className="bg-gray-200 p-4 rounded-lg">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Preview Surat</h3>
+                        <div className="transform scale-90 origin-top">
+                            <SuratTidakMampuPreview
+                                letterNumber={`470/${detailedRequest.id}/${new Date(detailedRequest.created_at).getFullYear()}`}
+                                letterData={detailedRequest.letter_input_data}
+                                requestDescription={detailedRequest.description}
+                                qrCode={qrCode}
+                            />
+                        </div>
+                    </div>
+                    {/* Right Column: Details & Actions */}
+                    <div className="space-y-5">
+                      <div className="bg-white border border-gray-200 p-4 rounded-lg">
+                         <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><User className="w-5 h-5 text-blue-600" />Informasi Pemohon</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div><p className="text-xs text-gray-600">Nama</p><p className="font-medium text-gray-900">{detailedRequest.user?.full_name || 'Unknown'}</p></div>
+                            <div><p className="text-xs text-gray-600">Layanan</p><p className="font-medium text-gray-900">{detailedRequest.service?.name || detailedRequest.request_type}</p></div>
+                          </div>
+                      </div>
+                      <div className="bg-white border border-gray-200 p-4 rounded-lg">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Keperluan:</h4>
+                        <p className="text-gray-600 bg-gray-50 p-3 rounded-lg text-sm">{detailedRequest.description}</p>
+                      </div>
+
+                      {detailedRequest.status === 'kades_review' && !qrCode && (
+                        <div className="bg-yellow-50 border-2 border-yellow-200 p-4 rounded-lg">
+                            <h4 className="text-sm font-semibold text-yellow-900 mb-2">Alasan Penolakan</h4>
+                            <p className="text-xs text-gray-600 mb-2">Isi kolom ini jika Anda ingin menolak pengajuan.</p>
+                            <textarea
+                              value={rejectionReason}
+                              onChange={(e) => setRejectionReason(e.target.value)}
+                              placeholder="Contoh: Data tidak sesuai dengan dokumen..."
+                              className="w-full p-2 border border-gray-300 rounded-md"
+                              rows={3}
+                            />
+                        </div>
+                      )}
+                      {detailedRequest.status === 'approved' && qrCode && (
+                          <div className="p-4 bg-emerald-50 border-l-4 border-emerald-500">
+                              <p className="font-semibold text-emerald-800">Surat telah disetujui dan ditandatangani.</p>
+                              <p className="text-sm text-emerald-700">Warga kini dapat mengunduh surat yang sudah final.</p>
+                          </div>
+                      )}
+                    </div>
+                </div>
+            )}
+          </div>
+
+          <div className="sticky bottom-0 bg-gray-100 p-4 rounded-b-2xl border-t border-gray-200 flex justify-end gap-3">
+              {detailedRequest?.status === 'kades_review' && !qrCode ? (
+                <>
+                  <button type="button" onClick={handleReject} disabled={submittingAction} className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg disabled:opacity-50">
+                      {submittingAction ? <Loader2 className="animate-spin w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                      Tolak
+                  </button>
+                  <button type="button" onClick={handleSign} disabled={submittingAction} className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-semibold transition-colors shadow-lg disabled:opacity-50">
+                      {submittingAction ? <Loader2 className="animate-spin w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
+                      Setujui & Tandatangani
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setShowRequestModal(false)} className="px-6 py-3 border border-gray-300 rounded-xl text-sm font-medium text-gray-700 bg-white hover:bg-gray-100">
+                  Tutup
+                </button>
+              )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (authLoading) {
@@ -339,103 +508,11 @@ const KadesDashboard = () => {
       >
         {renderContent()}
       </DashboardLayout>
-
-      {showRequestModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center p-4 transition-opacity duration-300">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white p-6 border-b border-gray-200">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">Detail Pengajuan</h3>
-                  <p className="text-sm text-gray-500">ID: {selectedRequest.id}</p>
-                </div>
-                <button onClick={() => setShowRequestModal(false)} className="text-gray-400 hover:text-gray-600 p-2 rounded-full">
-                  <XCircle className="h-6 w-6" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-8 space-y-6">
-              {[
-                { label: 'Jenis Surat', value: selectedRequest.request_type },
-                { label: 'Layanan', value: selectedRequest.service?.name || 'Lainnya' },
-                { label: 'Pemohon', value: selectedRequest.user?.full_name || 'N/A' },
-                { label: 'NIK Pemohon', value: selectedRequest.user?.nik || '-' },
-                { label: 'Deskripsi', value: selectedRequest.description, pre: true },
-                { label: 'Tanggal Pengajuan', value: formatDate(selectedRequest.created_at) },
-              ].map(item => (
-                <div key={item.label}>
-                  <h4 className="text-sm font-semibold text-gray-600">{item.label}</h4>
-                  <p className={`mt-1 text-gray-900 ${item.pre ? 'whitespace-pre-wrap' : ''}`}>{item.value}</p>
-                </div>
-              ))}
-              
-              <div>
-                <h4 className="text-sm font-semibold text-gray-600">Status</h4>
-                <div className="mt-1">
-                  <span className={`px-3 py-1.5 text-sm font-semibold rounded-full flex items-center gap-2 w-fit ${getStatusColor(selectedRequest.status)}`}>
-                    {getStatusIcon(selectedRequest.status)}
-                    {getStatusLabel(selectedRequest.status)}
-                  </span>
-                </div>
-              </div>
-              
-              <div>
-                  <h4 className="text-sm font-semibold text-gray-600 mb-2">Dokumen Persyaratan</h4>
-                  {selectedRequest.documents && selectedRequest.documents.length > 0 ? (
-                    <div className="space-y-2">
-                      {selectedRequest.documents.map((doc: DocumentItem) => (
-                        <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200">
-                          <div className="flex items-center gap-3">
-                            <FileText className="w-5 h-5 text-blue-600" />
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm">{doc.required_name}</p>
-                              <p className="text-xs text-gray-500">{doc.original_name}</p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const token = localStorage.getItem('auth_token');
-                              const url = `${import.meta.env.VITE_API_BASE_URL}/requests/document/${doc.id}/download?token=${encodeURIComponent(token || '')}`;
-                              window.open(url, '_blank');
-                            }}
-                            className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 text-sm font-medium"
-                          >
-                            <Download className="w-4 h-4" /> Unduh
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-sm text-gray-500">Tidak ada dokumen.</p>
-                  )}
-              </div>
-
-            </div>
-
-            <div className="sticky bottom-0 bg-gray-50 p-6 border-t border-gray-200 flex justify-end space-x-3">
-              <button type="button" onClick={() => setShowRequestModal(false)} className="px-5 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-100">
-                Tutup
-              </button>
-              
-              {selectedRequest.status === 'pending' && (
-                <>
-                  <button type="button" onClick={() => handleUpdateStatus('rejected')} disabled={loadingRequests} className="flex items-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50">
-                    {loadingRequests ? <Loader2 className="animate-spin w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-                    Tolak
-                  </button>
-                  <button type="button" onClick={() => handleUpdateStatus('approved')} disabled={loadingRequests} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50">
-                    {loadingRequests ? <Loader2 className="animate-spin w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                    Setujui
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      
+      {renderRequestDetailModal()}
     </>
   );
 };
 
 export default KadesDashboard;
+

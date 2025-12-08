@@ -8,6 +8,7 @@ import GalleryEditor from '@/react-app/components/dashboard/GalleryEditor';
 import ServiceEditor from '@/react-app/components/dashboard/ServiceEditor';
 import PPIDEditor from '@/react-app/components/dashboard/PPIDEditor';
 import TransparencyEditor from '@/react-app/components/dashboard/TransparencyEditor';
+import Kelolapenduduk from '@/react-app/components/dashboard/penduduk/Kelolapenduduk';
 import Administrasi from '@/react-app/components/dashboard/Layanan/Administrasi';
 import { mockTransparencyData, mockVillagePrograms } from '@/react-app/data/mockInformationData';
 import {
@@ -19,8 +20,7 @@ import {
   BarChart3, DollarSign, Briefcase, Building2,
   TrendingUp, Globe, Heart, Award, Construction, ShoppingCart,
   GraduationCap, Stethoscope, Image, CalendarDays, Info, MapPin,
-  HelpCircle, FileSpreadsheet, List, LayoutGrid, UserCheck, CreditCard, AlertCircle,
-  ChevronLeft, ChevronRight
+  HelpCircle, FileSpreadsheet, UserCheck, CreditCard, AlertCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Link } from 'react-router-dom';
@@ -291,11 +291,7 @@ const OperatorDashboard = () => {
   const [agendaLoading, setAgendaLoading] = useState(false);
   const [galleryLoading, setGalleryLoading] = useState(false);
 
-  // Pagination states
-  const [servicesPage, setServicesPage] = useState(1);
-  const [requestsPage, setRequestsPage] = useState(1);
-  const ITEMS_PER_PAGE_SERVICES = 6;
-  const ITEMS_PER_PAGE_REQUESTS = 8;
+  // Pagination states (currently not used - can be re-enabled when needed)
 
   // Messages UI state
   const [messageCategory, setMessageCategory] = useState<MessageCategory | 'all'>('all');
@@ -968,196 +964,70 @@ const OperatorDashboard = () => {
     { id: 'website', label: 'Kelola Website', icon: Globe }
   ];
 
-  // Generate mock dusun data
+  // Daftar dusun sesuai struktur administrasi desa
   const dusuns: Dusun[] = [
     {
       id: 'dusun-1',
-      name: 'Dusun Mawar',
-      head_name: 'Budi Santoso',
-      head_phone: '081234567890',
-      rt_count: 5,
-      population_count: 234
+      name: 'Dusun I',
+      head_name: '',
+      head_phone: '',
+      rt_count: 386,
+      population_count: 1231,
     },
     {
-      id: 'dusun-2', 
-      name: 'Dusun Melati',
-      head_name: 'Siti Aminah',
-      head_phone: '081987654321',
-      rt_count: 4,
-      population_count: 189
+      id: 'dusun-2',
+      name: 'Dusun II A',
+      head_name: '',
+      head_phone: '',
+      rt_count: 429,
+      population_count: 1418,
     },
     {
       id: 'dusun-3',
-      name: 'Dusun Kenanga',
-      head_name: 'Ahmad Rahman',
-      head_phone: '081122334455',
-      rt_count: 3,
-      population_count: 156
-    }
+      name: 'Dusun II B',
+      head_name: '',
+      head_phone: '',
+      rt_count: 456,
+      population_count: 1905,
+    },
+    {
+      id: 'dusun-4',
+      name: 'Dusun III A',
+      head_name: '',
+      head_phone: '',
+      rt_count: 607,
+      population_count: 2434,
+    },
+    {
+      id: 'dusun-5',
+      name: 'Dusun III B',
+      head_name: '',
+      head_phone: '',
+      rt_count: 616,
+      population_count: 2260,
+    },
+    {
+      id: 'dusun-6',
+      name: 'Dusun IV',
+      head_name: '',
+      head_phone: '',
+      rt_count: 377,
+      population_count: 1027,
+    },
+    {
+      id: 'dusun-7',
+      name: 'Dusun V',
+      head_name: '',
+      head_phone: '',
+      rt_count: 365,
+      population_count: 1297,
+    },
   ];
 
-  // Generate mock citizens data
+  // citizensData will be filled from Excel import / API; no mock data
+
   useEffect(() => {
-    const mockCitizens: CitizenData[] = [
-      {
-        id: 1,
-        no: 1,
-        nik: '3304012001950001',
-        nama_lengkap: 'Ahmad Hidayat',
-        jenis_kelamin: 'Laki-laki',
-        tempat_lahir: 'Lampung',
-        tanggal_lahir: '20-01-1995',
-        umur: 29,
-        agama: 'Islam',
-        status_perkawinan: 'Kawin',
-        pekerjaan: 'Wiraswasta',
-        kewarganegaraan: 'WNI',
-        alamat: 'Jl. Mawar No. 12',
-        rt: '01',
-        rw: '01',
-        dusun: 'Dusun Mawar',
-        kelurahan: 'Fajar Baru',
-        kecamatan: 'Way Jepara',
-        no_kk: '3304012001950001',
-        nama_kepala_keluarga: 'Ahmad Hidayat',
-        status_dalam_keluarga: 'Kepala Keluarga',
-        pendidikan_terakhir: 'SMA',
-        nama_ibu: 'Siti Aminah',
-        nama_ayah: 'Budi Santoso',
-        golongan_darah: 'O',
-        status_perkawinan_dalam_kk: 'Kawin',
-        kelainan_fisik_mental: 'Tidak Ada',
-        no_telepon: '081234567890',
-        created_at: '2024-01-15'
-      },
-      {
-        id: 2,
-        no: 2,
-        nik: '3304012505920002',
-        nama_lengkap: 'Siti Nurhaliza',
-        jenis_kelamin: 'Perempuan',
-        tempat_lahir: 'Lampung',
-        tanggal_lahir: '25-05-1992',
-        umur: 32,
-        agama: 'Islam',
-        status_perkawinan: 'Kawin',
-        pekerjaan: 'Ibu Rumah Tangga',
-        kewarganegaraan: 'WNI',
-        alamat: 'Jl. Mawar No. 12',
-        rt: '01',
-        rw: '01',
-        dusun: 'Dusun Mawar',
-        kelurahan: 'Fajar Baru',
-        kecamatan: 'Way Jepara',
-        no_kk: '3304012001950001',
-        nama_kepala_keluarga: 'Ahmad Hidayat',
-        status_dalam_keluarga: 'Istri',
-        pendidikan_terakhir: 'SMA',
-        nama_ibu: 'Dewi Lestari',
-        nama_ayah: 'Ahmad Rahman',
-        golongan_darah: 'A',
-        status_perkawinan_dalam_kk: 'Kawin',
-        tanggal_perkawinan: '15-06-2015',
-        kelainan_fisik_mental: 'Tidak Ada',
-        no_telepon: '081234567891',
-        created_at: '2024-01-15'
-      },
-      {
-        id: 3,
-        no: 3,
-        nik: '3304011003880003',
-        nama_lengkap: 'Budi Santoso',
-        jenis_kelamin: 'Laki-laki',
-        tempat_lahir: 'Lampung',
-        tanggal_lahir: '10-03-1988',
-        umur: 36,
-        agama: 'Islam',
-        status_perkawinan: 'Kawin',
-        pekerjaan: 'PNS',
-        kewarganegaraan: 'WNI',
-        alamat: 'Jl. Melati No. 5',
-        rt: '02',
-        rw: '01',
-        dusun: 'Dusun Melati',
-        kelurahan: 'Fajar Baru',
-        kecamatan: 'Way Jepara',
-        no_kk: '3304011003880003',
-        nama_kepala_keluarga: 'Budi Santoso',
-        status_dalam_keluarga: 'Kepala Keluarga',
-        pendidikan_terakhir: 'S1',
-        nama_ibu: 'Ratna Sari',
-        nama_ayah: 'Hadi Wijaya',
-        golongan_darah: 'B',
-        status_perkawinan_dalam_kk: 'Kawin',
-        kelainan_fisik_mental: 'Tidak Ada',
-        no_telepon: '081234567892',
-        created_at: '2024-01-16'
-      },
-      {
-        id: 4,
-        no: 4,
-        nik: '3304011508900004',
-        nama_lengkap: 'Dewi Lestari',
-        jenis_kelamin: 'Perempuan',
-        tempat_lahir: 'Lampung',
-        tanggal_lahir: '15-08-1990',
-        umur: 34,
-        agama: 'Islam',
-        status_perkawinan: 'Kawin',
-        pekerjaan: 'Guru',
-        kewarganegaraan: 'WNI',
-        alamat: 'Jl. Melati No. 5',
-        rt: '02',
-        rw: '01',
-        dusun: 'Dusun Melati',
-        kelurahan: 'Fajar Baru',
-        kecamatan: 'Way Jepara',
-        no_kk: '3304011003880003',
-        nama_kepala_keluarga: 'Budi Santoso',
-        status_dalam_keluarga: 'Istri',
-        pendidikan_terakhir: 'S1',
-        nama_ibu: 'Sri Wahyuni',
-        nama_ayah: 'Agus Salim',
-        golongan_darah: 'AB',
-        status_perkawinan_dalam_kk: 'Kawin',
-        tanggal_perkawinan: '20-05-2012',
-        kelainan_fisik_mental: 'Tidak Ada',
-        no_telepon: '081234567893',
-        created_at: '2024-01-16'
-      },
-      {
-        id: 5,
-        no: 5,
-        nik: '3304012007930005',
-        nama_lengkap: 'Eko Prasetyo',
-        jenis_kelamin: 'Laki-laki',
-        tempat_lahir: 'Lampung',
-        tanggal_lahir: '20-07-1993',
-        umur: 31,
-        agama: 'Islam',
-        status_perkawinan: 'Belum Kawin',
-        pekerjaan: 'Petani',
-        kewarganegaraan: 'WNI',
-        alamat: 'Jl. Kenanga No. 8',
-        rt: '03',
-        rw: '02',
-        dusun: 'Dusun Kenanga',
-        kelurahan: 'Fajar Baru',
-        kecamatan: 'Way Jepara',
-        no_kk: '3304012007930005',
-        nama_kepala_keluarga: 'Eko Prasetyo',
-        status_dalam_keluarga: 'Kepala Keluarga',
-        pendidikan_terakhir: 'SMP',
-        nama_ibu: 'Sumiati',
-        nama_ayah: 'Sutrisno',
-        golongan_darah: 'O',
-        status_perkawinan_dalam_kk: 'Belum Kawin',
-        kelainan_fisik_mental: 'Tidak Ada',
-        no_telepon: '081234567894',
-        created_at: '2024-01-17'
-      }
-    ];
-    setCitizensData(mockCitizens);
+    setCitizensData([]);
   }, []);
 
 
@@ -2817,623 +2687,43 @@ const OperatorDashboard = () => {
     );
   };
 
+  const sortCitizensForDisplay = (data: CitizenData[]) => data;
+
   const renderPopulation = () => {
-    // Filter citizens data
-    const filteredCitizens = citizensData.filter(citizen => {
-      const matchDusun = filterDusun === 'all' || citizen.dusun === filterDusun;
-      const matchRT = filterRT === 'all' || citizen.rt === filterRT;
-      const matchGender = filterGender === 'all' || citizen.jenis_kelamin === filterGender;
-      const matchSearch = searchQuery === '' || 
-        citizen.nama_lengkap.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        citizen.nik.includes(searchQuery) ||
-        citizen.alamat.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      return matchDusun && matchRT && matchGender && matchSearch;
-    });
-
-    // Get unique values for filters
-    const uniqueDusuns = Array.from(new Set(citizensData.map(c => c.dusun)));
-    const uniqueRTs = Array.from(new Set(citizensData.map(c => c.rt))).sort();
-
     return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Kelola Penduduk</h2>
-          <p className="text-sm text-gray-600 mt-1">Kelola data penduduk berdasarkan dusun dan RT</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {/* View Mode Toggle */}
-          <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`flex items-center space-x-1 px-3 py-1.5 rounded-md transition-colors ${
-                viewMode === 'cards' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              <span className="text-sm font-medium hidden sm:inline">Cards</span>
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`flex items-center space-x-1 px-3 py-1.5 rounded-md transition-colors ${
-                viewMode === 'table' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <List className="w-4 h-4" />
-              <span className="text-sm font-medium hidden sm:inline">Tabel</span>
-            </button>
-          </div>
-          
-          <button 
-            onClick={() => setShowGuideModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-md"
-          >
-            <HelpCircle className="w-4 h-4" />
-            <span className="hidden sm:inline">Panduan</span>
-          </button>
-          <button 
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors shadow-md"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Import Data</span>
-          </button>
-          <button 
-            onClick={() => setShowExportModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-md"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export Data</span>
-          </button>
-          <button 
-            onClick={() => setShowAddDusun(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg transition-colors shadow-md"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Tambah Dusun</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Table View - Show all citizens data */}
-      {viewMode === 'table' ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-6">
-            {/* Filters and Search */}
-            <div className="mb-6 space-y-4">
-              <div className="flex flex-col md:flex-row gap-4">
-                {/* Search */}
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <input
-                      type="text"
-                      placeholder="Cari nama, NIK, atau alamat..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-                
-                {/* Filters */}
-                <div className="flex gap-2">
-                  <select
-                    value={filterDusun}
-                    onChange={(e) => setFilterDusun(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                  >
-                    <option value="all">Semua Dusun</option>
-                    {uniqueDusuns.map(dusun => (
-                      <option key={dusun} value={dusun}>{dusun}</option>
-                    ))}
-                  </select>
-                  
-                  <select
-                    value={filterRT}
-                    onChange={(e) => setFilterRT(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                  >
-                    <option value="all">Semua RT</option>
-                    {uniqueRTs.map(rt => (
-                      <option key={rt} value={rt}>RT {rt}</option>
-                    ))}
-                  </select>
-                  
-                  <select
-                    value={filterGender}
-                    onChange={(e) => setFilterGender(e.target.value)}
-                    className="px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                  >
-                    <option value="all">Semua JK</option>
-                    <option value="Laki-laki">Laki-laki</option>
-                    <option value="Perempuan">Perempuan</option>
-                  </select>
-                  
-                  {(filterDusun !== 'all' || filterRT !== 'all' || filterGender !== 'all' || searchQuery !== '') && (
-                    <button
-                      onClick={() => {
-                        setFilterDusun('all');
-                        setFilterRT('all');
-                        setFilterGender('all');
-                        setSearchQuery('');
-                      }}
-                      className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center space-x-2"
-                    >
-                      <X className="w-4 h-4" />
-                      <span>Reset</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              
-              {/* Results count */}
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">
-                  Menampilkan <span className="font-semibold text-gray-900">{filteredCitizens.length}</span> dari <span className="font-semibold text-gray-900">{citizensData.length}</span> data penduduk
-                </p>
-                <button
-                  onClick={() => {
-                    const newSelected = new Set(filteredCitizens.filter(c => c.id).map(c => c.id!));
-                    setSelectedCitizens(newSelected);
-                  }}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  Pilih semua hasil filter
-                </button>
-              </div>
-            </div>
-
-            {/* Table */}
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">No</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIK</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]">Nama Lengkap</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">JK</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Tempat Lahir</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Lahir</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Umur</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agama</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Status Perkawinan</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Pekerjaan</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kewarganegaraan</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">Alamat</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RT</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RW</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dusun</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelurahan</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kecamatan</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No KK</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Nama KK</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Status Keluarga</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pendidikan</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Nama Ibu</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Nama Ayah</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gol Darah</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Kelainan Fisik/Mental</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No Telepon</th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50 z-10">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredCitizens.length === 0 ? (
-                      <tr>
-                        <td colSpan={27} className="px-4 py-8 text-center text-gray-500">
-                          <div className="flex flex-col items-center">
-                            <Users className="w-12 h-12 text-gray-300 mb-2" />
-                            <p>Tidak ada data penduduk yang sesuai dengan filter</p>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredCitizens.map((citizen, index) => (
-                        <tr key={citizen.id} className="hover:bg-gray-50">
-                          <td className="px-3 py-3 text-sm text-gray-900 sticky left-0 bg-white">{index + 1}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900 font-mono">{citizen.nik}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900 font-medium">{citizen.nama_lengkap}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.jenis_kelamin}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.tempat_lahir}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.tanggal_lahir}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.umur || '-'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.agama}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.status_perkawinan}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.pekerjaan}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.kewarganegaraan || 'WNI'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.alamat}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.rt}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.rw}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.dusun}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.kelurahan || 'Fajar Baru'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.kecamatan || 'Way Jepara'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900 font-mono">{citizen.no_kk}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.nama_kepala_keluarga || '-'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.status_dalam_keluarga}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.pendidikan_terakhir}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.nama_ibu || '-'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.nama_ayah || '-'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.golongan_darah || '-'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.kelainan_fisik_mental || 'Tidak Ada'}</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">{citizen.no_telepon || '-'}</td>
-                          <td className="px-3 py-3 text-sm sticky right-0 bg-white">
-                            <div className="flex items-center space-x-2">
-                              <button
-                                className="text-blue-600 hover:text-blue-900"
-                                title="Lihat Detail"
-                              >
-                                <Eye className="w-4 h-4" />
-                              </button>
-                              <button
-                                className="text-emerald-600 hover:text-emerald-900"
-                                title="Edit"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                className="text-red-600 hover:text-red-900"
-                                title="Hapus"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : !selectedDusun ? (
-        // Dusun List View
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Daftar Dusun</h3>
-            <div className="space-y-4">
-              {dusuns.map((dusun) => (
-                <div 
-                  key={dusun.id} 
-                  className="border border-gray-200 rounded-lg p-5 hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer bg-gradient-to-r from-white to-gray-50"
-                  onClick={() => setSelectedDusun(dusun.id)}
-                >
-                  <div className="flex items-center justify-between">
-                    {/* Left Section - Icon & Info */}
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-                        <Building2 className="w-7 h-7 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-lg font-bold text-gray-900 mb-1">{dusun.name}</h4>
-                        <p className="text-sm text-gray-600 flex items-center">
-                          <User className="w-4 h-4 mr-1" />
-                          Kepala: {dusun.head_name}
-                        </p>
-                        {dusun.head_phone && (
-                          <p className="text-sm text-gray-500 flex items-center mt-1">
-                            <Phone className="w-3.5 h-3.5 mr-1" />
-                            {dusun.head_phone}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Middle Section - Statistics */}
-                    <div className="hidden md:flex items-center space-x-6 px-6">
-                      <div className="text-center">
-                        <div className="flex items-center justify-center space-x-2 mb-1">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <Building2 className="w-5 h-5 text-blue-600" />
-                          </div>
-                          <div className="text-left">
-                            <div className="text-2xl font-bold text-gray-900">{dusun.rt_count}</div>
-                            <div className="text-xs text-gray-600 uppercase tracking-wide">RT</div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="w-px h-12 bg-gray-200"></div>
-                      
-                      <div className="text-center">
-                        <div className="flex items-center justify-center space-x-2 mb-1">
-                          <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                            <Users className="w-5 h-5 text-emerald-600" />
-                          </div>
-                          <div className="text-left">
-                            <div className="text-2xl font-bold text-emerald-600">{dusun.population_count}</div>
-                            <div className="text-xs text-gray-600 uppercase tracking-wide">Jiwa</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Mobile Statistics */}
-                    <div className="flex md:hidden items-center space-x-4 ml-4">
-                      <div className="text-center">
-                        <div className="text-xl font-bold text-gray-900">{dusun.rt_count}</div>
-                        <div className="text-xs text-gray-600">RT</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-xl font-bold text-emerald-600">{dusun.population_count}</div>
-                        <div className="text-xs text-gray-600">Jiwa</div>
-                      </div>
-                    </div>
-
-                    {/* Right Section - Actions */}
-                    <div className="flex items-center space-x-2 ml-6">
-                      <button 
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
-                        onClick={(e) => handleEditDusun(dusun, e)} 
-                        title="Edit Dusun"
-                      >
-                        <Edit3 className="w-5 h-5" />
-                      </button>
-                      <div className="text-gray-300">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : !selectedRT ? (
-        // RT List View for selected Dusun
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-          <div className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-2">
-                <button onClick={() => setSelectedDusun('')} className="text-gray-400 hover:text-gray-600">
-                  ← Kembali
-                </button>
-                <h3 className="text-lg font-semibold">
-                  RT di {dusuns.find(d => d.id === selectedDusun)?.name}
-                </h3>
-              </div>
-              <button 
-                onClick={() => alert('Fitur dalam pengembangan')}
-                className="btn-primary px-4 py-2"
-              >
-                <Plus className="w-4 h-4" />
-                Tambah RT
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {/* Mock RT data */}
-              {Array.from({length: dusuns.find(d => d.id === selectedDusun)?.rt_count || 0}, (_, i) => (
-                <div 
-                  key={i} 
-                  className="border border-gray-200 rounded-lg p-5 hover:shadow-lg hover:border-emerald-300 transition-all cursor-pointer bg-gradient-to-r from-white to-emerald-50/30"
-                  onClick={() => setSelectedRT(`rt-${i+1}`)}
-                >
-                  <div className="flex items-center justify-between">
-                    {/* Left Section - Icon & Info */}
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-md">
-                        <Building2 className="w-7 h-7 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="text-lg font-bold text-gray-900 mb-1">RT {String(i+1).padStart(2, '0')}</h4>
-                        <p className="text-sm text-gray-600 flex items-center">
-                          <User className="w-4 h-4 mr-1" />
-                          Ketua: Bapak RT {i+1}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Middle Section - Statistics */}
-                    <div className="hidden md:flex items-center space-x-6 px-6">
-                      <div className="text-center">
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                            <Users className="w-5 h-5 text-emerald-600" />
-                          </div>
-                          <div className="text-left">
-                            <div className="text-2xl font-bold text-emerald-600">{Math.floor(Math.random() * 50) + 20}</div>
-                            <div className="text-xs text-gray-600 uppercase tracking-wide">Kepala Keluarga</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Mobile Statistics */}
-                    <div className="flex md:hidden items-center ml-4">
-                      <div className="text-center">
-                        <div className="text-xl font-bold text-emerald-600">{Math.floor(Math.random() * 50) + 20}</div>
-                        <div className="text-xs text-gray-600">KK</div>
-                      </div>
-                    </div>
-
-                    {/* Right Section - Actions */}
-                    <div className="flex items-center space-x-2 ml-6">
-                      <button 
-                        className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" 
-                        onClick={(e) => handleEditRT(i+1, e)} 
-                        title="Edit RT"
-                      >
-                        <Edit3 className="w-5 h-5" />
-                      </button>
-                      <div className="text-gray-300">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : (() => {
-        // Filter citizens by selected RT
-        const rtNumber = selectedRT.replace('rt-', '');
-        const rtCitizens = citizensData.filter(citizen => citizen.rt === rtNumber);
-        
-        return (
-          // Citizens List View for selected RT
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-2">
-                  <button onClick={() => setSelectedRT('')} className="text-gray-400 hover:text-gray-600">
-                    ← Kembali ke RT
-                  </button>
-                  <h3 className="text-lg font-semibold">
-                    Data Penduduk RT {rtNumber} - {dusuns.find(d => d.id === selectedDusun)?.name}
-                  </h3>
-                </div>
-                <button className="btn-primary px-4 py-2">
-                  <Plus className="w-4 h-4" />
-                  Tambah Penduduk
-                </button>
-              </div>
-              
-              {/* Data Summary */}
-              <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Users className="w-8 h-8 text-emerald-600" />
-                    <div>
-                      <p className="text-sm text-emerald-700 font-medium">Total Penduduk di RT {rtNumber}</p>
-                      <p className="text-2xl font-bold text-emerald-900">{rtCitizens.length} Orang</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-6">
-                    <div className="text-center">
-                      <p className="text-sm text-emerald-700">Laki-laki</p>
-                      <p className="text-xl font-bold text-emerald-900">
-                        {rtCitizens.filter(c => c.jenis_kelamin === 'Laki-laki').length}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-emerald-700">Perempuan</p>
-                      <p className="text-xl font-bold text-emerald-900">
-                        {rtCitizens.filter(c => c.jenis_kelamin === 'Perempuan').length}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Population Table - Full Columns */}
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">No</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIK</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[180px]">Nama Lengkap</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">JK</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Tempat Lahir</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tgl Lahir</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Umur</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agama</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Status Perkawinan</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Pekerjaan</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kewarganegaraan</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">Alamat</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RT</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RW</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dusun</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kelurahan</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kecamatan</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No KK</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Nama KK</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Status Keluarga</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pendidikan</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Nama Ibu</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Nama Ayah</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gol Darah</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[150px]">Kelainan Fisik/Mental</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No Telepon</th>
-                        <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky right-0 bg-gray-50 z-10">Aksi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {rtCitizens.length === 0 ? (
-                        <tr>
-                          <td colSpan={27} className="px-4 py-8 text-center text-gray-500">
-                            <div className="flex flex-col items-center">
-                              <Users className="w-12 h-12 text-gray-300 mb-2" />
-                              <p>Belum ada data penduduk di RT {rtNumber}</p>
-                              <p className="text-sm text-gray-400 mt-1">Klik "Tambah Penduduk" untuk menambahkan data</p>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        rtCitizens.map((citizen, index) => (
-                          <tr key={citizen.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-3 text-sm text-gray-900 sticky left-0 bg-white">{index + 1}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900 font-mono">{citizen.nik}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900 font-medium">{citizen.nama_lengkap}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.jenis_kelamin}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.tempat_lahir}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.tanggal_lahir}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.umur || '-'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.agama}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.status_perkawinan}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.pekerjaan}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.kewarganegaraan || 'WNI'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.alamat}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.rt}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.rw}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.dusun}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.kelurahan || 'Fajar Baru'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.kecamatan || 'Way Jepara'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900 font-mono">{citizen.no_kk}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.nama_kepala_keluarga || '-'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.status_dalam_keluarga}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.pendidikan_terakhir}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.nama_ibu || '-'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.nama_ayah || '-'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.golongan_darah || '-'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.kelainan_fisik_mental || 'Tidak Ada'}</td>
-                            <td className="px-3 py-3 text-sm text-gray-900">{citizen.no_telepon || '-'}</td>
-                            <td className="px-3 py-3 text-sm sticky right-0 bg-white">
-                              <div className="flex items-center space-x-2">
-                                <button
-                                  className="text-blue-600 hover:text-blue-900"
-                                  title="Lihat Detail"
-                                >
-                                  <Eye className="w-4 h-4" />
-                                </button>
-                                <button
-                                  className="text-emerald-600 hover:text-emerald-900"
-                                  title="Edit"
-                                >
-                                  <Edit3 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  className="text-red-600 hover:text-red-900"
-                                  title="Hapus"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-    </div>
+      <Kelolapenduduk
+        citizensData={citizensData}
+        dusuns={dusuns.map((d) => ({
+          id: d.id,
+          name: d.name,
+          head_name: d.head_name,
+          head_phone: d.head_phone,
+          rt_count: d.rt_count,
+          population_count: d.population_count,
+        }))}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        filterDusun={filterDusun}
+        setFilterDusun={setFilterDusun}
+        filterRT={filterRT}
+        setFilterRT={setFilterRT}
+        filterGender={filterGender}
+        setFilterGender={setFilterGender}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        setShowGuideModal={setShowGuideModal}
+        setShowImportModal={setShowImportModal}
+        setShowExportModal={setShowExportModal}
+        setShowAddDusun={setShowAddDusun}
+        selectedDusun={selectedDusun}
+        setSelectedDusun={setSelectedDusun}
+        selectedRT={selectedRT}
+        setSelectedRT={setSelectedRT}
+        sortCitizensForDisplay={sortCitizensForDisplay}
+        setSelectedCitizens={setSelectedCitizens}
+        handleEditDusun={handleEditDusun as any}
+        handleEditRT={handleEditRT as any}
+      />
     );
   };
 
@@ -3523,7 +2813,6 @@ const OperatorDashboard = () => {
             apiFetch={apiFetch}
             setAllRequests={setAllRequests}
             citizensData={citizensData}
-            user={user}
           />
         )}
 

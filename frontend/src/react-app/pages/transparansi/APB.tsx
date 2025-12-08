@@ -20,6 +20,7 @@ interface DocumentEntry {
 }
 
 const APBPage = () => {
+  const baseUrl = import.meta.env.BASE_URL || '/';
   const summary2025 = {
     year: 2025,
     income: 2010413837,
@@ -84,15 +85,15 @@ const APBPage = () => {
     {
       title: 'APBDes 2024 - Dokumen Utama',
       description: 'Rincian anggaran pendapatan dan belanja desa yang disahkan untuk tahun 2024.',
-      thumbnail: '/transparansi/apbdes/APBDes2024.jpeg',
-      downloadUrl: '/transparansi/apbdes/APBDes2024.jpeg',
+      thumbnail: `${baseUrl}transparansi/apbdes/APBDes2024.jpeg`,
+      downloadUrl: `${baseUrl}transparansi/apbdes/APBDes2024.jpeg`,
       date: '13 Februari 2024'
     },
     {
       title: 'Laporan Realisasi Pelaksanaan I 2024',
       description: 'Laporan capaian realisasi anggaran semester pertama tahun 2024.',
-      thumbnail: '/transparansi/apbdes/Realisasi2024.jpeg',
-      downloadUrl: '/transparansi/apbdes/Realisasi2024.jpeg',
+      thumbnail: `${baseUrl}transparansi/apbdes/Realisasi2024.jpeg`,
+      downloadUrl: `${baseUrl}transparansi/apbdes/Realisasi2024.jpeg`,
       date: '01 Juli 2024'
     }
   ];

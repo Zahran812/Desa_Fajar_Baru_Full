@@ -26,7 +26,6 @@ const KadesDashboard = lazy(() => import("@/react-app/pages/dashboard/KadesDashb
 // Transparansi Pages
 const APBPage = lazy(() => import("@/react-app/pages/transparansi/APB"));
 const IDMPage = lazy(() => import("@/react-app/pages/transparansi/IDM"));
-const BansosPage = lazy(() => import("@/react-app/pages/transparansi/Bansos"));
 const PembangunanPage = lazy(() => import("@/react-app/pages/transparansi/Pembangunan"));
 const StatistikPage = lazy(() => import("@/react-app/pages/transparansi/Statistik"));
 
@@ -34,7 +33,8 @@ const StatistikPage = lazy(() => import("@/react-app/pages/transparansi/Statisti
 const BUMDesEkonomiPage = lazy(() => import("@/react-app/pages/program/BUMDesEkonomi"));
 const KesehatanSosialPage = lazy(() => import("@/react-app/pages/program/KesehatanSosial"));
 const PendidikanBudayaPage = lazy(() => import("@/react-app/pages/program/PendidikanBudaya"));
-
+const BusinessUnitDetailPage = lazy(() => import("@/react-app/pages/program/BusinessUnitDetail"));
+const CheckoutPage = lazy(() => import("@/react-app/pages/Checkout"));
 // Profil Pages
 const PejabatStruktural = lazy(() => import("@/react-app/pages/profil/PejabatStruktural"));
 const ProfilSejarah = lazy(() => import("@/react-app/pages/profil/ProfilSejarah"));
@@ -43,6 +43,9 @@ const DemografiWilayah = lazy(() => import("@/react-app/pages/profil/DemografiWi
 // Layanan Subpages
 const AdministrasiPage = lazy(() => import("@/react-app/pages/layanan/Administrasi"));
 const PPIDPage = lazy(() => import("@/react-app/pages/layanan/PPID"));
+
+// Misc
+const VerifPage = lazy(() => import("@/react-app/pages/Verif"));
 
 // Informasi Pages
 const AgendaPage = lazy(() => import("@/react-app/pages/informasi/Agenda"));
@@ -135,7 +138,6 @@ export default function App() {
                 {/* Transparansi Routes */}
                 <Route path="/transparansi/apb" element={<APBPage />} />
                 <Route path="/transparansi/idm" element={<IDMPage />} />
-                <Route path="/transparansi/bansos" element={<BansosPage />} />
                 <Route path="/transparansi/pembangunan" element={<PembangunanPage />} />
                 <Route path="/transparansi/statistik" element={<StatistikPage />} />
                 
@@ -143,6 +145,9 @@ export default function App() {
                 <Route path="/program/bumdes-ekonomi" element={<BUMDesEkonomiPage />} />
                 <Route path="/program/kesehatan-sosial" element={<KesehatanSosialPage />} />
                 <Route path="/program/pendidikan-budaya" element={<PendidikanBudayaPage />} />
+                <Route path="/program/unit-usaha/:unitId" element={<BusinessUnitDetailPage />} />
+                <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/verif" element={<VerifPage />} />
                 
                 {/* Layanan Sub Routes */}
                 <Route path="/layanan/administrasi" element={<AdministrasiPage />} />
