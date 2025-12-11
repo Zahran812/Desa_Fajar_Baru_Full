@@ -10,6 +10,17 @@
             line-height: 1.3;
         }
 
+        table { 
+            border-collapse: collapse; 
+            border-spacing: 0; 
+            table-layout: fixed; 
+            width: 100%; 
+        }
+        table td, table th { 
+            padding: 6px; 
+            vertical-align: top; 
+        }
+
         .container {
             padding: 0.7cm;
             min-height: 100vh;

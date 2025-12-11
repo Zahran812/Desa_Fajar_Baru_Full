@@ -93,6 +93,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
   const defaultKadesName = 'M. Agus Budiantoro, S.HI';
   const activeEditorRef = useRef<'kop' | 'body' | null>(null);
   const [placeholderMode, setPlaceholderMode] = useState(false);
+  const [tableBorderMode, setTableBorderMode] = useState<'border' | 'none'>('border');
 
   // Form state, inisialisasi dengan defaultKopHtml
   const [formData, setFormData] = useState({
@@ -161,7 +162,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
       if (!rows || !cols || rows < 1 || cols < 1) return;
       
       // Style untuk sel yang dapat diubah ukurannya
-      const cellStyle = 'padding:6px; overflow: auto; resize: horizontal; min-width: 50px;';
+      const cellStyle = 'padding:6px; overflow: auto; resize: horizontal;';
 
       const cells = new Array(rows)
           .fill(null)
@@ -173,10 +174,46 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
           )
           .join('');
 
-      const tableStyle = 'width:100%; border-collapse: collapse; table-layout: fixed;';
+      const tableStyle = 'width:100%; border-collapse: collapse;';
       const tableHtml = `<table style="${tableStyle}" border="1">${cells}</table><br/>`;
 
       document.execCommand('insertHTML', false, tableHtml);
+  }, []);
+
+  // Bekukan lebar kolom dan border sebelum simpan/preview agar PDF mengikuti
+  const normalizeTables = useCallback((root: HTMLElement, mode: 'border' | 'none') => {
+    root.querySelectorAll('table').forEach((table) => {
+      const firstRow = table.querySelector('tr');
+      if (!firstRow) return;
+      const cells = Array.from(firstRow.children) as HTMLElement[];
+      const tableWidth = (table as HTMLElement).getBoundingClientRect().width || (table as HTMLElement).offsetWidth || 1;
+
+      // Hapus colgroup lama (DomPDF sering mengabaikan/merusak)
+      table.querySelectorAll('colgroup').forEach((cg) => cg.remove());
+
+      // Border on/off
+      const borderStyle = mode === 'border' ? '1px solid #555' : 'none';
+      (table as HTMLElement).style.borderCollapse = 'collapse';
+      (table as HTMLElement).style.borderSpacing = '0';
+      (table as HTMLElement).style.border = borderStyle;
+      const rows = Array.from(table.querySelectorAll('tr'));
+      rows.forEach((row) => {
+        Array.from(row.children).forEach((cell, idx) => {
+          const el = cell as HTMLElement;
+          const source = cells[idx] || el;
+          const widthPx = source.getBoundingClientRect().width || source.offsetWidth;
+          const pct = widthPx ? Math.max(1, Math.round((widthPx / tableWidth) * 1000) / 10) : null;
+
+          el.style.border = borderStyle;
+          el.style.padding = el.style.padding || '6px';
+          el.style.verticalAlign = 'top';
+          el.style.removeProperty('resize');
+          el.style.removeProperty('min-width');
+          el.style.overflow = 'visible';
+          if (pct) el.style.width = `${pct}%`;
+        });
+      });
+    });
   }, []);
 
   const renderToolbar = useCallback((target: 'kop' | 'body') => (
@@ -368,7 +405,10 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
   // Handle Submit (Create/Update)
   const handleSubmit = useCallback(async () => {
     const currentKopHtml = formData.kop_html;
-
+    
+    if (bodyRef.current) {
+      normalizeTables(bodyRef.current, tableBorderMode);
+    }
     const currentBodyHtml = bodyRef.current?.innerHTML || '';
 
     if (!formData.name.trim() || !currentKopHtml.trim() || !currentBodyHtml.trim()) {
@@ -441,7 +481,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
     } finally {
       setSaving(false);
     }
-  }, [formData.name, formData.description, formData.status, formData.kop_html, serviceId, template]);
+  }, [formData.name, formData.description, formData.status, formData.kop_html, serviceId, template, tableBorderMode, normalizeTables]);
 
   const handleToggleStatus = useCallback(() => {
     const newStatus = formData.status === 'active' ? 'inactive' : 'active';
@@ -449,7 +489,11 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
   }, [formData.status]);
 
   const handlePreview = () => {
-    // Preview sudah live; tidak ada aksi khusus.
+    if (bodyRef.current) {
+      normalizeTables(bodyRef.current, tableBorderMode);
+      const html = bodyRef.current.innerHTML;
+      handleInputChange('body_html', html);
+    }
   };
 
   return (
@@ -576,7 +620,24 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
 
           {/* Body Surat Editor */}
           <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-3 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900">Isi Surat</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Isi Surat</h3>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600">Border Tabel:</span>
+                <button
+                  type="button"
+                  onClick={() => setTableBorderMode('border')}
+                  className={`px-2 py-1 text-xs rounded border ${tableBorderMode === 'border' ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-white border-gray-300 text-gray-700'}`}
+                >
+                  On
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTableBorderMode('none')}
+                  className={`px-2 py-1 text-xs rounded border ${tableBorderMode === 'none' ? 'bg-blue-100 border-blue-400 text-blue-700' : 'bg-white border-gray-300 text-gray-700'}`}
+                >
+                  Off
+                </button>
+              </div>
             <p className="text-xs text-gray-600">
               Susun isi surat sesuai kebutuhan. Placeholder data akan diisi oleh input operator saat generate.
             </p>
