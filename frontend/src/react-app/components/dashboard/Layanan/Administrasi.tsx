@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import SuratTidakMampuPreview from '../../letters/SuratTidakMampuPreview';
 import {
   Edit3, Trash2, Plus, ChevronLeft, ChevronRight, FileText, MessageSquare, User, Calendar, Eye, Search,
@@ -25,6 +25,23 @@ interface Category {
   icon?: string;
 }
 
+interface RequestDocument {
+  id: number;
+  required_name?: string;
+}
+
+interface LetterInputData {
+  [key: string]: string | undefined;
+  nama?: string;
+  nik?: string;
+  tempat_lahir?: string;
+  tanggal_lahir?: string;
+  jenis_kelamin?: string;
+  agama?: string;
+  pekerjaan?: string;
+  alamat?: string;
+}
+
 interface Request {
   id: number;
   user_id: number;
@@ -33,7 +50,7 @@ interface Request {
   subject: string;
   description: string;
   status: string;
-  documents?: any[];
+  documents?: RequestDocument[];
   response?: string;
   created_at: string;
   updated_at: string;
@@ -47,16 +64,7 @@ interface Request {
     name: string;
   };
   generated_html_content?: string | null;
-  letter_input_data?: {
-    nama?: string;
-    nik?: string;
-    tempat_lahir?: string;
-    tanggal_lahir?: string;
-    jenis_kelamin?: string;
-    agama?: string;
-    pekerjaan?: string;
-    alamat?: string;
-  } | null;
+  letter_input_data?: LetterInputData | null;
 }
 
 interface CitizenData {
@@ -152,6 +160,13 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     pekerjaan: '',
     alamat: '',
   });
+  const [templateHtml, setTemplateHtml] = useState<{ kop_html: string; body_html: string; template_id?: number } | null>(null);
+  const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
+  const numberPlaceholderKeys = useMemo(() => ['nomor_surat', 'no_surat', 'nomor'], []);
+  const isNumberPlaceholder = useCallback(
+    (key: string) => numberPlaceholderKeys.some(k => key === k || key.includes(k)),
+    [numberPlaceholderKeys]
+  );
 
   const ITEMS_PER_PAGE_SERVICES = 6;
   const ITEMS_PER_PAGE_REQUESTS = 8;
@@ -178,7 +193,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
 
     // Prioritaskan data surat yang tersimpan di backend jika ada
     if (requestDetailModalData.letter_input_data) {
-      const d = requestDetailModalData.letter_input_data;
+      const d = requestDetailModalData.letter_input_data as LetterInputData;
       setLetterData({
         nama: d.nama || '',
         nik: d.nik || '',
@@ -189,6 +204,16 @@ const Administrasi: React.FC<AdministrasiProps> = ({
         pekerjaan: d.pekerjaan || '',
         alamat: d.alamat || '',
       });
+      const numberFromInput =
+        d.nomor_surat || d.no_surat || d.nomor || '';
+      if (numberFromInput) setLetterNumber(String(numberFromInput));
+      setPlaceholderValues(prev => ({
+        ...prev,
+        ...Object.entries(d || {}).reduce<Record<string, string>>((acc, [k, v]) => {
+          acc[k] = v ? String(v) : '';
+          return acc;
+        }, {}),
+      }));
       return;
     }
 
@@ -206,6 +231,17 @@ const Administrasi: React.FC<AdministrasiProps> = ({
           pekerjaan: citizen.pekerjaan || '',
           alamat: citizen.alamat || '',
         });
+        setPlaceholderValues(prev => ({
+          ...prev,
+          nama: citizen.nama_lengkap || '',
+          nik: citizen.nik || '',
+          tempat_lahir: citizen.tempat_lahir || '',
+          tanggal_lahir: citizen.tanggal_lahir || '',
+          jenis_kelamin: citizen.jenis_kelamin || '',
+          agama: citizen.agama || '',
+          pekerjaan: citizen.pekerjaan || '',
+          alamat: citizen.alamat || '',
+        }));
       }
     }
   }, [requestDetailModalData, citizensData]);
@@ -235,9 +271,87 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     }
   };
 
+  const placeholders = useMemo(() => {
+    if (!templateHtml) return [] as string[];
+    const combined = `${templateHtml.kop_html || ''} ${templateHtml.body_html || ''}`;
+    const matches = combined.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g) || [];
+    const keys = matches.map(m => m.replace('{{', '').replace('}}', '').trim());
+    return Array.from(new Set(keys));
+  }, [templateHtml]);
+
+  const displayPlaceholders = useMemo(
+    () => placeholders.filter(key => !isNumberPlaceholder(key)),
+    [placeholders, isNumberPlaceholder]
+  );
+
+  useEffect(() => {
+    const fetchTemplate = async () => {
+      if (!requestDetailModalData?.service_id) return;
+      try {
+        const token = localStorage.getItem('auth_token');
+        const response = await apiFetch(`/letter-templates/service/${requestDetailModalData.service_id}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        let tmpl: { kop_html?: string; body_html?: string; id?: number; service_id?: number } | null = null;
+        if (Array.isArray(data) && data.length > 0) tmpl = data[0];
+        else if (data && data.data && typeof data.data === 'object') tmpl = data.data;
+        else if (data && data.service_id) tmpl = data;
+        if (tmpl) {
+          setTemplateHtml({
+            kop_html: tmpl.kop_html || '',
+            body_html: tmpl.body_html || '',
+            template_id: tmpl.id,
+          });
+          // Prefill placeholder values with existing letterData / backend saved inputs
+          setPlaceholderValues(prev => {
+            const next = { ...prev };
+            displayPlaceholders.forEach(key => {
+              if (!(key in next)) {
+                const fromLetter = (requestDetailModalData.letter_input_data || undefined)?.[key] ?? (letterData as Record<string, string>)[key];
+                next[key] = fromLetter ? String(fromLetter) : '';
+              }
+            });
+            return next;
+          });
+        } else {
+          setTemplateHtml(null);
+        }
+      } catch (e) {
+        console.error('Failed to fetch letter template for service', e);
+        setTemplateHtml(null);
+      }
+    };
+
+    // fetch hanya saat modal dibuka atau service berubah
+    if (showRequestDetailModal) {
+      fetchTemplate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestDetailModalData?.service_id, showRequestDetailModal]);
+
+  const replacePlaceholders = (html: string) => {
+    return html.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+      if (isNumberPlaceholder(key)) return letterNumber || '';
+      return placeholderValues[key] ?? '';
+    });
+  };
+
+  const hasNumberPlaceholder = useMemo(
+    () => placeholders.some((p) => isNumberPlaceholder(p)),
+    [placeholders, isNumberPlaceholder]
+  );
+
   const handleGenerateLetter = async () => {
-    if (!letterNumber.trim() || !letterData.nama.trim() || !letterData.nik.trim()) {
-      alert('Mohon lengkapi Nomor Surat, Nama, dan NIK pada form Input Data Surat.');
+    if (hasNumberPlaceholder && !letterNumber.trim()) {
+      alert('Mohon lengkapi Nomor Surat pada form Input Data Surat.');
+      return;
+    }
+    if (placeholders.length === 0 && (!letterData.nama.trim() || !letterData.nik.trim())) {
+      alert('Mohon lengkapi data surat.');
       return;
     }
     if (!confirm('Anda yakin data yang diinput sudah benar? Surat akan dibuat dan dikirim ke Kepala Desa untuk ditinjau.')) return;
@@ -253,8 +367,9 @@ const Administrasi: React.FC<AdministrasiProps> = ({
                 'Accept': 'application/json',
             },
             body: JSON.stringify({
-                letter_data: letterData,
+                letter_data: placeholders.length ? placeholderValues : letterData,
                 letter_number: letterNumber,
+                template_id: templateHtml?.template_id,
             }),
         });
 
@@ -262,7 +377,12 @@ const Administrasi: React.FC<AdministrasiProps> = ({
             const result = await response.json();
             setAllRequests(prev => prev.map(req =>
                 req.id === requestDetailModalData!.id
-                    ? { ...req, status: 'kades_review', generated_html_content: result.request.generated_html_content }
+                    ? {
+                        ...req,
+                        status: 'kades_review',
+                        generated_html_content: result.request.generated_html_content,
+                        letter_input_data: placeholders.length ? placeholderValues : letterData,
+                      }
                     : req
             ));
             setShowRequestDetailModal(false);
@@ -317,10 +437,79 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     }
   };
 
+  const normalizeAssetUrls = useCallback((html: string) => {
+    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+    const baseUrl = (import.meta.env.BASE_URL || '').replace(/\/$/, '');
+    const toApi = (path: string) => `${apiBase}/${path.replace(/^\//, '')}`;
+    const toBase = (path: string) => `${baseUrl}/${path.replace(/^\//, '')}`;
+    return html
+      // handle Blade-style {{ asset('path') }} (general, kecuali kop/)
+      .replace(/{{\s*asset\(['"](?!kop\/)([^'"]+)['"]\)\s*}}/g, (_m, p1) => toApi(p1))
+      // handle Blade-style asset('path') (general, kecuali kop/)
+      .replace(/asset\(['"](?!kop\/)([^'"]+)['"]\)/g, (_m, p1) => toApi(p1))
+      // kop assets → BASE_URL (frontend public)
+      .replace(/asset\(['"]kop\/([^'"]+)['"]\)/g, (_m, p1) => toBase(`kop/${p1}`))
+      .replace(/{{\s*asset\(['"]kop\/([^'"]+)['"]\)\s*}}/g, (_m, p1) => toBase(`kop/${p1}`))
+      // handle relative src paths for kop/* via BASE_URL
+      .replace(/src=["'](?!https?:\/\/)(\/?)(kop\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
+      // handle relative src paths for Logo/* via BASE_URL (public assets)
+      .replace(/src=["'](?!https?:\/\/)(\/?)(Logo\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
+      // fallback: if masih tersisa {{ /kop/... }} bungkus, hilangkan braces
+      .replace(/{{\s*\/?(kop\/[^}]+)\s*}}/g, (_m, p1) => toBase(p1));
+  }, []);
+
   const renderLetterTemplate = () => {
     if (!requestDetailModalData) return null;
+    if (templateHtml) {
+      const kopSection = normalizeAssetUrls(replacePlaceholders(templateHtml.kop_html || ''));
+      const bodySection = normalizeAssetUrls(replacePlaceholders(templateHtml.body_html || ''));
+      const qrUrl = requestDetailModalData.status === 'approved'
+        ? `${import.meta.env.BASE_URL}qr/QR.png`
+        : null;
+      const html = `
+        <style>
+          .letterhead { position: relative; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 3px solid #000; overflow: hidden; }
+          .letterhead-logo { float: left; width: 90px; text-align: center; margin-top: 5px; }
+          .letterhead-logo img { width: 80px; height: auto; }
+          .letterhead-text { margin-left: 5px; text-align: center; padding-top: 0; }
+          .letterhead-text .lh1, .letterhead-text .lh2, .letterhead-text .lh3, .letterhead-text .addr { margin: 0; padding: 0; line-height: 1.3; }
+          .lh1 { font-size: 16pt; font-weight: bold; letter-spacing: 1px; }
+          .lh2 { font-size: 16pt; font-weight: bold; letter-spacing: 1px; }
+          .lh3 { font-size: 19pt; font-weight: bold; letter-spacing: 2px; margin-top: 3px; margin-bottom: 3px; }
+          .addr { margin-left: 5px; font-size: 10pt; font-style: italic; letter-spacing: 0.8px; }
+          .signature-section { margin-top: 30px; width: 100%; display: flex; justify-content: flex-end; }
+          .signature { width: 50%; text-align: center; }
+          .qr-code { margin: 10px auto 0; height: 100px; width: 100px; }
+        </style>
+        <div class="letterhead">${kopSection}</div>
+        <div class="body-wrapper">${bodySection}</div>
+        <div class="signature-section">
+          <div class="signature">
+            <p>Fajar Baru, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p>Kepala Desa Fajar Baru</p>
+            ${qrUrl ? `<div class="qr-code"><img src="${qrUrl}" alt="QR Code" style="width:100px;height:100px;" /></div>` : `<div style="height:100px;"></div>`}
+            <p style="margin-top:10px; font-weight:bold; text-decoration: underline;">(M. Agus Budiantoro, S.HI)</p>
+          </div>
+        </div>
+      `;
+      return (
+        <div
+          className="bg-white shadow-md"
+          style={{
+            width: '210mm',
+            minHeight: '297mm',
+            padding: '20mm',
+            boxSizing: 'border-box',
+            fontFamily: 'Times New Roman, serif',
+            fontSize: '11pt',
+            lineHeight: 1.5,
+          }}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      );
+    }
 
-    // Use the operator's current input while the request is being processed
+    // fallback to static preview
     const isInProgress = requestDetailModalData.status === 'in_progress';
     const isApproved = requestDetailModalData.status === 'approved';
 
@@ -345,7 +534,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowRequestDetailModal(false)}>
-        <div className="bg-gray-50 rounded-2xl shadow-2xl max-w-7xl w-full max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-[96vw] lg:max-w-[1400px] max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
           <div className="sticky top-0 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white p-5 rounded-t-2xl z-10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -360,10 +549,10 @@ const Administrasi: React.FC<AdministrasiProps> = ({
           </div>
           
           <div className="flex-grow overflow-y-auto p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6">
               <div className="bg-gray-100 p-4 rounded-lg">
                 <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Preview Surat</h3>
-                <div className="transform scale-90 origin-top">
+                <div className="bg-white p-4 rounded-lg shadow-sm">
                   {renderLetterTemplate()}
                 </div>
               </div>
@@ -383,7 +572,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
                   <div className="bg-white border border-gray-200 p-4 rounded-lg">
                     <h4 className="text-sm font-semibold text-gray-700 mb-3">Dokumen Persyaratan ({requestDetailModalData.documents.length}):</h4>
                     <div className="space-y-2">
-                      {requestDetailModalData.documents.map((doc: any, idx: number) => (
+                      {requestDetailModalData.documents.map((doc: RequestDocument, idx: number) => (
                         <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 transition-colors">
                           <p className="font-medium text-gray-900 text-sm">{doc.required_name || 'Dokumen'}</p>
                           <button onClick={() => {
@@ -397,44 +586,66 @@ const Administrasi: React.FC<AdministrasiProps> = ({
                 )}
                 <div className="bg-white border-2 border-blue-200 p-4 rounded-lg space-y-4">
                     <h4 className="text-sm font-semibold text-blue-900">Input Data Surat</h4>
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600">Nomor Surat</label>
-                      <input type="text" value={letterNumber} onChange={(e) => setLetterNumber(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                    </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">Nama</label>
-                          <input type="text" value={letterData.nama} onChange={(e) => setLetterData(d => ({ ...d, nama: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                    {hasNumberPlaceholder && (
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600">Nomor Surat</label>
+                        <input type="text" value={letterNumber} onChange={(e) => setLetterNumber(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                      </div>
+                    )}
+
+                    {placeholders.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs text-gray-600">Isikan data untuk placeholder di template.</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {displayPlaceholders.map((key) => (
+                            <div key={key}>
+                              <label className="text-xs font-semibold text-gray-600">{key}</label>
+                              <input
+                                type="text"
+                                value={placeholderValues[key] || ''}
+                                onChange={(e) => setPlaceholderValues(prev => ({ ...prev, [key]: e.target.value }))}
+                                className="w-full p-2 border border-gray-300 rounded-md mt-1"
+                              />
+                            </div>
+                          ))}
                         </div>
-                         <div>
-                          <label className="text-xs font-semibold text-gray-600">NIK</label>
-                          <input type="text" value={letterData.nik} onChange={(e) => setLetterData(d => ({ ...d, nik: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                        </div>
-                         <div>
-                          <label className="text-xs font-semibold text-gray-600">Tempat Lahir</label>
-                          <input type="text" value={letterData.tempat_lahir} onChange={(e) => setLetterData(d => ({ ...d, tempat_lahir: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                        </div>
-                         <div>
-                          <label className="text-xs font-semibold text-gray-600">Tanggal Lahir</label>
-                          <input type="text" value={letterData.tanggal_lahir} onChange={(e) => setLetterData(d => ({ ...d, tanggal_lahir: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                        </div>
-                         <div>
-                          <label className="text-xs font-semibold text-gray-600">Jenis Kelamin</label>
-                          <input type="text" value={letterData.jenis_kelamin} onChange={(e) => setLetterData(d => ({ ...d, jenis_kelamin: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                        </div>
-                         <div>
-                          <label className="text-xs font-semibold text-gray-600">Agama</label>
-                          <input type="text" value={letterData.agama} onChange={(e) => setLetterData(d => ({ ...d, agama: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                        </div>
-                         <div className="md:col-span-2">
-                           <label className="text-xs font-semibold text-gray-600">Pekerjaan</label>
-                           <input type="text" value={letterData.pekerjaan} onChange={(e) => setLetterData(d => ({ ...d, pekerjaan: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                         </div>
-                        <div className="md:col-span-2">
-                          <label className="text-xs font-semibold text-gray-600">Alamat</label>
-                          <input type="text" value={letterData.alamat} onChange={(e) => setLetterData(d => ({ ...d, alamat: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
-                        </div>
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600">Nama</label>
+                            <input type="text" value={letterData.nama} onChange={(e) => setLetterData(d => ({ ...d, nama: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                           <div>
+                            <label className="text-xs font-semibold text-gray-600">NIK</label>
+                            <input type="text" value={letterData.nik} onChange={(e) => setLetterData(d => ({ ...d, nik: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                           <div>
+                            <label className="text-xs font-semibold text-gray-600">Tempat Lahir</label>
+                            <input type="text" value={letterData.tempat_lahir} onChange={(e) => setLetterData(d => ({ ...d, tempat_lahir: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                           <div>
+                            <label className="text-xs font-semibold text-gray-600">Tanggal Lahir</label>
+                            <input type="text" value={letterData.tanggal_lahir} onChange={(e) => setLetterData(d => ({ ...d, tanggal_lahir: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                           <div>
+                            <label className="text-xs font-semibold text-gray-600">Jenis Kelamin</label>
+                            <input type="text" value={letterData.jenis_kelamin} onChange={(e) => setLetterData(d => ({ ...d, jenis_kelamin: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                           <div>
+                            <label className="text-xs font-semibold text-gray-600">Agama</label>
+                            <input type="text" value={letterData.agama} onChange={(e) => setLetterData(d => ({ ...d, agama: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                           <div className="md:col-span-2">
+                             <label className="text-xs font-semibold text-gray-600">Pekerjaan</label>
+                             <input type="text" value={letterData.pekerjaan} onChange={(e) => setLetterData(d => ({ ...d, pekerjaan: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                           </div>
+                          <div className="md:col-span-2">
+                            <label className="text-xs font-semibold text-gray-600">Alamat</label>
+                            <input type="text" value={letterData.alamat} onChange={(e) => setLetterData(d => ({ ...d, alamat: e.target.value }))} className="w-full p-2 border border-gray-300 rounded-md mt-1" />
+                          </div>
+                      </div>
+                    )}
                 </div>
                 <div className={`bg-white border-2 ${['pending', 'diproses'].includes(requestDetailModalData.status) ? 'border-yellow-300' : 'border-gray-200'} p-4 rounded-lg`}>
                   <h4 className="text-sm font-semibold text-yellow-900 mb-2">Catatan *</h4>

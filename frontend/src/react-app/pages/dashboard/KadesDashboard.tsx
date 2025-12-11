@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/react-app/lib/api';
 import { useAuth } from '@/react-app/contexts/AuthContext';
 import DashboardLayout from '@/react-app/components/DashboardLayout';
@@ -49,6 +49,7 @@ interface Request {
     id: number;
     name: string;
   };
+  generated_html_content?: string | null;
   letter_input_data?: LetterInputData;
 }
 
@@ -166,37 +167,39 @@ const KadesDashboard = () => {
     }
   };
 
+  const fetchRequestDetail = useCallback(async (requestId: number) => {
+    const token = localStorage.getItem('auth_token');
+    const response = await apiFetch(`/requests/${requestId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Gagal mengambil detail pengajuan');
+    }
+    const data = await response.json();
+    setDetailedRequest(data);
+    if (data.status === 'approved') {
+      setQrCode('approved');
+    } else {
+      setQrCode(null);
+    }
+  }, []);
+
   const handleViewRequest = async (request: Request) => {
     setSelectedRequest(request);
     setShowRequestModal(true);
     setLoadingModal(true);
-    setQrCode(null); // Reset QR code before loading details
+    setQrCode(null);
     try {
-        const token = localStorage.getItem('auth_token');
-        const response = await apiFetch(`/requests/${request.id}`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: 'application/json',
-            },
-        });
-        if (!response.ok) {
-            throw new Error('Gagal mengambil detail pengajuan');
-        }
-        const data = await response.json();
-        setDetailedRequest(data);
-
-        // If the request is already approved, show the dummy QR in preview
-        if (data.status === 'approved') {
-          setQrCode('approved');
-        } else {
-          setQrCode(null);
-        }
+      await fetchRequestDetail(request.id);
     } catch (error) {
-        console.error('Error fetching request details:', error);
-        alert(error instanceof Error ? error.message : 'Terjadi kesalahan');
-        setShowRequestModal(false);
+      console.error('Error fetching request details:', error);
+      alert(error instanceof Error ? error.message : 'Terjadi kesalahan');
+      setShowRequestModal(false);
     } finally {
-        setLoadingModal(false);
+      setLoadingModal(false);
     }
   };
 
@@ -223,12 +226,10 @@ const KadesDashboard = () => {
       }
       
       await response.json();
-      // We only need a flag to show the dummy QR PNG in the preview
-      setQrCode('signed');
-
+      await fetchRequestDetail(selectedRequest.id); // refresh detail & qr
       alert('Surat berhasil disetujui dan ditandatangani. Silakan tutup modal ini.');
       await fetchAllRequests(); // Refresh list in the background
-      // Don't close modal, let Kades see the signed letter
+      // Don't close modal, let Kades see the signed letter with QR
     } catch (error) {
       console.error('Error signing request:', error);
       alert(error instanceof Error ? error.message : 'Terjadi kesalahan.');
@@ -380,7 +381,7 @@ const KadesDashboard = () => {
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onClick={() => setShowRequestModal(false)}>
-        <div className="bg-gray-50 rounded-2xl shadow-2xl max-w-7xl w-full max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-gray-50 rounded-2xl shadow-2xl w-full max-w-[96vw] xl:max-w-[1400px] 2xl:max-w-[1600px] max-h-[95vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
           <div className="sticky top-0 bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-5 rounded-t-2xl z-10">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -402,17 +403,41 @@ const KadesDashboard = () => {
             ) : !detailedRequest ? (
                 <div className="text-center p-8 text-gray-600">Gagal memuat detail pengajuan.</div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_1fr] gap-6">
                     {/* Left Column: Preview */}
                     <div className="bg-gray-200 p-4 rounded-lg">
                         <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">Preview Surat</h3>
-                        <div className="transform scale-90 origin-top">
+                        <div className="bg-white p-4 rounded-lg shadow-sm">
+                          {detailedRequest.generated_html_content ? (
+                            <div
+                              className="bg-white shadow-md"
+                              style={{
+                                width: '210mm',
+                                minHeight: '297mm',
+                                padding: '10mm',
+                                boxSizing: 'border-box',
+                                fontFamily: 'Times New Roman, serif',
+                                fontSize: '11pt',
+                                lineHeight: 1.5,
+                              }}
+                              dangerouslySetInnerHTML={{
+                                __html: `
+                                  <style>
+                                    .kop-wrapper { margin-bottom: 12px; text-align: center; }
+                                    .kop-wrapper img { max-height: 120px; width: auto; display: block; margin: 0 auto 6px; }
+                                  </style>
+                                  ${detailedRequest.generated_html_content || ''}
+                                `,
+                              }}
+                            />
+                          ) : (
                             <SuratTidakMampuPreview
                                 letterNumber={`470/${detailedRequest.id}/${new Date(detailedRequest.created_at).getFullYear()}`}
                                 letterData={detailedRequest.letter_input_data}
                                 requestDescription={detailedRequest.description}
                                 qrCode={qrCode}
                             />
+                          )}
                         </div>
                     </div>
                     {/* Right Column: Details & Actions */}

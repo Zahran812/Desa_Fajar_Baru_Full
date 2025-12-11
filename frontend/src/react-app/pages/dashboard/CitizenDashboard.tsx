@@ -1054,23 +1054,37 @@ useEffect(() => {
                         {getStatusIcon(request.status)}
                         {getStatusLabel(request.status)}
                       </span>
-                      {request.status === 'approved' && request.outputs && request.outputs.length > 0 && (
-                        <button
-                          onClick={() => {
-                            const token = localStorage.getItem('auth_token');
-                            const output = request.outputs![0];
-                            const url = `${import.meta.env.VITE_API_BASE_URL}/requests/output/${output.id}/download?token=${encodeURIComponent(token || '')}`;
-
-                            console.log('Download URL:', url);
-
-                            // Open URL directly - browser will handle download
-                            window.open(url, '_blank');
-                          }}
-                          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                          <Download className="w-4 h-4" />
-                          Unduh Surat
-                        </button>
+                      {request.status === 'approved' && (
+                        <>
+                          {request.outputs && request.outputs.length > 0 ? (
+                            <button
+                              onClick={() => {
+                                const token = localStorage.getItem('auth_token');
+                                if (!token) return;
+                                const output = request.outputs![0];
+                                const url = `${import.meta.env.VITE_API_BASE_URL}/requests/output/${output.id}/download?token=${encodeURIComponent(token)}`;
+                                window.open(url, '_blank');
+                              }}
+                              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              <Download className="w-4 h-4" />
+                              Unduh Surat
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                const token = localStorage.getItem('auth_token');
+                                if (!token) return;
+                                const url = `${import.meta.env.VITE_API_BASE_URL}/requests/${request.id}/preview?token=${encodeURIComponent(token)}`;
+                                window.open(url, '_blank');
+                              }}
+                              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              <Eye className="w-4 h-4" />
+                              Lihat / Unduh Surat
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

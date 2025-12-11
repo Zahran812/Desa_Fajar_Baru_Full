@@ -19,6 +19,8 @@ class LetterTemplate extends Model
         'file_size',
         'status',
         'description',
+        'kop_html',
+        'body_html',
     ];
 
     protected $casts = [
