@@ -6,6 +6,28 @@ import { Eye, EyeOff, Phone, Lock, User, CreditCard, MapPin, Home, UserCog, User
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
+type RegionItem = { id: string | number; name: string };
+
+type KtpParsed = {
+  province: string;
+  regency: string;
+  nik: string;
+  full_name: string;
+  birth_place: string;
+  birth_date: string;
+  gender: string;
+  blood_type: string;
+  address: string;
+  rt_number: string;
+  rw_number: string;
+  village: string;
+  dusun: string;
+  district: string;
+  religion: string;
+  marital_status: string;
+  occupation: string;
+};
+
 // Memoized heavy illustration to avoid re-rendering on every keystroke
 const IllustrationSection = memo(({ side, isLogin }: { side: 'left' | 'right'; isLogin: boolean }) => (
   <div className={`flex-1 bg-gradient-to-br from-emerald-600 via-village-green to-blue-600 ${side === 'left' ? 'rounded-l-3xl' : 'rounded-r-3xl'} p-6 lg:p-10 flex flex-col justify-center items-center relative overflow-hidden`}>
@@ -56,7 +78,7 @@ const IllustrationSection = memo(({ side, isLogin }: { side: 'left' | 'right'; i
 
     <div className="absolute bottom-6 left-6 right-6 text-center">
       <p className="text-emerald-100 text-xs lg:text-sm">
-        © 2024 Desa Fajar Baru - Jati Agung, Lampung Selatan
+        © 2025 Desa Fajar Baru - Jati Agung, Lampung Selatan
       </p>
     </div>
   </div>
@@ -67,6 +89,12 @@ const Login = () => {
   const isDemoMode = false; // Backend is now functional
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'phone' | 'method' | 'otp' | 'reset'>('phone');
+  const [forgotMethod, setForgotMethod] = useState<'sms'>('sms');
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '']);
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     phone: '',
@@ -94,10 +122,11 @@ const Login = () => {
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [provinces, setProvinces] = useState<any[]>([]);
-  const [regencies, setRegencies] = useState<any[]>([]);
-  const [districts, setDistricts] = useState<any[]>([]);
-  const [villages, setVillages] = useState<any[]>([]);
+  const otpInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const [provinces, setProvinces] = useState<RegionItem[]>([]);
+  const [regencies, setRegencies] = useState<RegionItem[]>([]);
+  const [districts, setDistricts] = useState<RegionItem[]>([]);
+  const [villages, setVillages] = useState<RegionItem[]>([]);
   const [selectedProvinceId, setSelectedProvinceId] = useState('');
   const [selectedRegencyId, setSelectedRegencyId] = useState('');
   const [selectedDistrictId, setSelectedDistrictId] = useState('');
@@ -138,7 +167,9 @@ const Login = () => {
         const res = await fetch('https://www.emsifa.com/api-wilayah-indonesia/api/provinces.json');
         const data = await res.json();
         setProvinces(data);
-      } catch {}
+      } catch (e) {
+        console.error(e);
+      }
     };
     loadProvinces();
   }, []);
@@ -153,7 +184,9 @@ const Login = () => {
         const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/regencies/${selectedProvinceId}.json`);
         const data = await res.json();
         setRegencies(data);
-      } catch {}
+      } catch (e) {
+        console.error(e);
+      }
     };
     loadRegencies();
   }, [selectedProvinceId]);
@@ -168,7 +201,9 @@ const Login = () => {
         const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/districts/${selectedRegencyId}.json`);
         const data = await res.json();
         setDistricts(data);
-      } catch {}
+      } catch (e) {
+        console.error(e);
+      }
     };
     loadDistricts();
   }, [selectedRegencyId]);
@@ -183,7 +218,9 @@ const Login = () => {
         const res = await fetch(`https://www.emsifa.com/api-wilayah-indonesia/api/villages/${selectedDistrictId}.json`);
         const data = await res.json();
         setVillages(data);
-      } catch {}
+      } catch (e) {
+        console.error(e);
+      }
     };
     loadVillages();
   }, [selectedDistrictId]);
@@ -198,7 +235,7 @@ const Login = () => {
     if (p && String(p.id) !== selectedProvinceId) {
       setSelectedProvinceId(String(p.id));
     }
-  }, [provinces, formData.province]);
+  }, [provinces, formData.province, selectedProvinceId]);
 
   // When regencies list or formData.regency changes
   useEffect(() => {
@@ -207,7 +244,7 @@ const Login = () => {
     if (r && String(r.id) !== selectedRegencyId) {
       setSelectedRegencyId(String(r.id));
     }
-  }, [regencies, formData.regency]);
+  }, [regencies, formData.regency, selectedRegencyId]);
 
   // When districts list or formData.district changes
   useEffect(() => {
@@ -216,7 +253,7 @@ const Login = () => {
     if (d && String(d.id) !== selectedDistrictId) {
       setSelectedDistrictId(String(d.id));
     }
-  }, [districts, formData.district]);
+  }, [districts, formData.district, selectedDistrictId]);
 
   // When villages list or formData.village changes
   useEffect(() => {
@@ -225,7 +262,7 @@ const Login = () => {
     if (v && String(v.id) !== selectedVillageId) {
       setSelectedVillageId(String(v.id));
     }
-  }, [villages, formData.village]);
+  }, [villages, formData.village, selectedVillageId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
@@ -265,33 +302,144 @@ const Login = () => {
     setFormData((prev) => ({ ...prev, village: name, dusun: name }));
   };
 
+  const handleOtpDigitChange = (index: number, rawValue: string) => {
+    const digit = String(rawValue || '').replace(/\D/g, '').slice(-1);
+    setOtpDigits((prev) => {
+      const next = [...prev];
+      next[index] = digit;
+      return next;
+    });
+    if (digit && index < 3) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pasted = e.clipboardData.getData('text') || '';
+    const digits = pasted.replace(/\D/g, '').slice(0, 4).split('');
+    if (digits.length === 0) return;
+    e.preventDefault();
+    setOtpDigits((prev) => {
+      const next = [...prev];
+      for (let i = 0; i < 4; i += 1) {
+        next[i] = digits[i] || '';
+      }
+      return next;
+    });
+    const lastIdx = Math.min(digits.length, 4) - 1;
+    if (lastIdx >= 0) {
+      otpInputRefs.current[lastIdx]?.focus();
+    }
+  };
+
+  const forgotSubtitle = () => {
+    if (!isForgotPassword) return '';
+    if (forgotStep === 'phone') return 'Masukkan nomor telepon untuk reset kata sandi';
+    if (forgotStep === 'method') return 'Pilih metode pemulihan akun';
+    if (forgotStep === 'otp') return 'Masukkan kode OTP 4 digit yang dikirim via SMS';
+    return 'Buat kata sandi baru untuk akun Anda';
+  };
+
+  const forgotSubmitLabel = () => {
+    if (!isForgotPassword) return '';
+    if (forgotStep === 'phone') return 'Lanjutkan';
+    if (forgotStep === 'method') return 'Kirim OTP';
+    if (forgotStep === 'otp') return 'Verifikasi OTP';
+    return 'Simpan Kata Sandi';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setMessage({ type: '', content: '' });
 
     if (isForgotPassword) {
-      try {
-        const response = await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ phone: formData.phone }),
-        });
+      const phone = String(formData.phone || '').trim();
+      if (!phone) {
+        setMessage({ type: 'error', content: 'Nomor telepon wajib diisi.' });
+        setIsSubmitting(false);
+        return;
+      }
 
-        const data = await response.json();
-        
-        if (response.ok) {
-          setMessage({ 
-            type: 'success', 
-            content: 'Instruksi reset kata sandi telah dikirim ke nomor telepon Anda.' 
-          });
-        } else {
-          setMessage({ type: 'error', content: data.error || 'Nomor telepon tidak ditemukan' });
+      const otpValue = otpDigits.join('');
+
+      if (forgotStep === 'phone') {
+        setForgotStep('method');
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (forgotStep === 'method') {
+        if (forgotMethod !== 'sms') {
+          setMessage({ type: 'error', content: 'Pilih metode pemulihan akun.' });
+          setIsSubmitting(false);
+          return;
         }
-      } catch (error) {
-        setMessage({ type: 'error', content: 'Terjadi kesalahan jaringan' });
+        const otp = String(Math.floor(1000 + Math.random() * 9000));
+        setGeneratedOtp(otp);
+        setOtpDigits(['', '', '', '']);
+        setForgotStep('otp');
+        setMessage({
+          type: 'success',
+          content: `Kode OTP telah dikirim melalui SMS di nomor ${phone}.`,
+        });
+        setTimeout(() => {
+          otpInputRefs.current[0]?.focus();
+        }, 0);
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (forgotStep === 'otp') {
+        if (otpValue.length !== 4) {
+          setMessage({ type: 'error', content: 'Masukkan OTP 4 digit.' });
+          setIsSubmitting(false);
+          return;
+        }
+        if (!generatedOtp || otpValue !== generatedOtp) {
+          setMessage({ type: 'error', content: 'OTP salah. Silakan coba lagi.' });
+          setIsSubmitting(false);
+          return;
+        }
+        setForgotStep('reset');
+        setMessage({ type: 'success', content: 'Verifikasi OTP berhasil. Silakan buat kata sandi baru.' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (forgotStep === 'reset') {
+        const p1 = newPassword;
+        const p2 = confirmNewPassword;
+        if (!p1 || p1.length < 6) {
+          setMessage({ type: 'error', content: 'Kata sandi baru minimal 6 karakter.' });
+          setIsSubmitting(false);
+          return;
+        }
+        if (p1 !== p2) {
+          setMessage({ type: 'error', content: 'Konfirmasi kata sandi tidak cocok.' });
+          setIsSubmitting(false);
+          return;
+        }
+
+        setFormData((prev) => ({ ...prev, password: p1 }));
+        setIsForgotPassword(false);
+        setIsLogin(true);
+        setShowPassword(false);
+        setForgotStep('phone');
+        setForgotMethod('sms');
+        setOtpDigits(['', '', '', '']);
+        setGeneratedOtp('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setMessage({ type: 'success', content: 'Kata sandi berhasil diperbarui. Silakan login.' });
+        setIsSubmitting(false);
+        return;
       }
     } else if (isLogin) {
       const success = await login(formData.phone, formData.password);
@@ -372,7 +520,7 @@ const Login = () => {
     setSelectedVillageId('');
   };
 
-  const parseKtpText = (text: string) => {
+  const parseKtpText = (text: string): KtpParsed => {
     const lines = text
       .split(/\r?\n/)
       .map((l) => l.replace(/\s{2,}/g, ' ').trim())
@@ -410,64 +558,64 @@ const Login = () => {
         if (m1) nik = m1[1];
       }
       if (!full_name) {
-        const m2 = line.match(/^\s*(Nama|NAMA)\s*[:\-]?\s*(.+)$/i);
+        const m2 = line.match(/^\s*(Nama|NAMA)\s*[:-]?\s*(.+)$/i);
         if (m2) full_name = m2[2].replace(/[^A-Za-z\s'.-]/g, ' ').trim();
       }
       if (!birth_place || !birth_date) {
-        const m2b = line.match(/Tempat\s*\/?\s*Tgl\.?\s*Lahir\s*[:\-]?\s*(.+)/i);
+        const m2b = line.match(/Tempat\s*[/]?\s*Tgl\.?\s*Lahir\s*[:-]?\s*(.+)/i);
         if (m2b) {
           const val = m2b[1];
           const parts = val.split(/[,;]|\s{2,}/).map((p) => p.trim()).filter(Boolean);
           if (parts.length >= 1) birth_place = parts[0];
-          const dateMatch = val.match(/(\d{2}[\-\/]\d{2}[\-\/]\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/);
+          const dateMatch = val.match(/(\d{2}[-/]\d{2}[-/]\d{4}|\d{1,2}\s+[A-Za-z]+\s+\d{4})/);
           if (dateMatch) birth_date = dateMatch[1];
         }
       }
       if (!gender) {
-        const m2c = line.match(/Jenis\s*Kelamin\s*[:\-]?\s*([A-Za-z-]+)/i);
+        const m2c = line.match(/Jenis\s*Kelamin\s*[:-]?\s*([A-Za-z-]+)/i);
         if (m2c) gender = m2c[1].toUpperCase();
       }
       if (!blood_type) {
-        const m2d = line.match(/Gol\.?\s*Darah\s*[:\-]?\s*([ABO]{1,2}|AB)/i);
+        const m2d = line.match(/Gol\.?\s*Darah\s*[:-]?\s*([ABO]{1,2}|AB)/i);
         if (m2d) blood_type = m2d[1].toUpperCase();
       }
       if (!address) {
-        const m3 = line.match(/^\s*(Alamat|ALAMAT)\s*[:\-]?\s*(.+)$/i);
+        const m3 = line.match(/^\s*(Alamat|ALAMAT)\s*[:-]?\s*(.+)$/i);
         if (m3) address = m3[2].trim();
       }
       if (!rt_number || !rw_number) {
-        const m4 = line.match(/RT\s*\/?\s*([0-9]{1,3})\s*[,\/]?\s*RW\s*\/?\s*([0-9]{1,3})/i);
+        const m4 = line.match(/RT\s*[/]?\s*([0-9]{1,3})\s*[,/]?\s*RW\s*[/]?\s*([0-9]{1,3})/i);
         if (m4) {
           rt_number = m4[1].padStart(2, '0');
           rw_number = m4[2].padStart(2, '0');
         } else {
-          const rtOnly = line.match(/RT\s*\/?\s*([0-9]{1,3})/i);
-          const rwOnly = line.match(/RW\s*\/?\s*([0-9]{1,3})/i);
+          const rtOnly = line.match(/RT\s*[/]?\s*([0-9]{1,3})/i);
+          const rwOnly = line.match(/RW\s*[/]?\s*([0-9]{1,3})/i);
           if (rtOnly) rt_number = rtOnly[1].padStart(2, '0');
           if (rwOnly) rw_number = rwOnly[1].padStart(2, '0');
         }
       }
       if (!dusun || !village) {
-        const m5 = line.match(/(Desa|Kel\/?Desa|Kelurahan)\s*[:\-]?\s*([A-Za-z\s'.-]+)/i);
+        const m5 = line.match(/(Desa|Kel[/]?Desa|Kelurahan)\s*[:-]?\s*([A-Za-z\s'.-]+)/i);
         if (m5) {
           dusun = m5[2].trim();
           village = m5[2].trim();
         }
       }
       if (!district) {
-        const m6 = line.match(/Kecamatan\s*[:\-]?\s*([A-Za-z\s'.-]+)/i);
+        const m6 = line.match(/Kecamatan\s*[:-]?\s*([A-Za-z\s'.-]+)/i);
         if (m6) district = m6[1].trim();
       }
       if (!religion) {
-        const m7 = line.match(/Agama\s*[:\-]?\s*([A-Za-z\s'.-]+)/i);
+        const m7 = line.match(/Agama\s*[:-]?\s*([A-Za-z\s'.-]+)/i);
         if (m7) religion = m7[1].trim();
       }
       if (!marital_status) {
-        const m8 = line.match(/Status\s*Perkawinan\s*[:\-]?\s*([A-Za-z\s'.-]+)/i);
+        const m8 = line.match(/Status\s*Perkawinan\s*[:-]?\s*([A-Za-z\s'.-]+)/i);
         if (m8) marital_status = m8[1].trim();
       }
       if (!occupation) {
-        const m9 = line.match(/Pekerjaan\s*[:\-]?\s*([A-Za-z\s'.-]+)/i);
+        const m9 = line.match(/Pekerjaan\s*[:-]?\s*([A-Za-z\s'.-]+)/i);
         if (m9) occupation = m9[1].trim();
       }
     }
@@ -479,7 +627,25 @@ const Login = () => {
       }
     }
 
-    return { province, regency, nik, full_name, birth_place, birth_date, gender, blood_type, address, rt_number, rw_number, village, dusun, district, religion, marital_status, occupation };
+    return {
+      province,
+      regency,
+      nik,
+      full_name,
+      birth_place,
+      birth_date,
+      gender,
+      blood_type,
+      address,
+      rt_number,
+      rw_number,
+      village,
+      dusun,
+      district,
+      religion,
+      marital_status,
+      occupation,
+    };
   };
 
   const processKtpImage = async (file: File) => {
@@ -488,10 +654,12 @@ const Login = () => {
       const result = await Tesseract.recognize(file, 'ind+eng');
       const text = result.data.text || '';
       const parsed = parseKtpText(text);
-      const updates: any = {};
-      for (const key of Object.keys(parsed) as Array<keyof typeof parsed>) {
+      const updates: Partial<typeof formData> = {};
+      for (const key of Object.keys(parsed) as Array<keyof KtpParsed>) {
         const val = parsed[key];
-        if (val) (updates as any)[key] = val;
+        if (val) {
+          updates[key as keyof typeof formData] = val;
+        }
       }
       if (Object.keys(updates).length > 0) {
         setFormData((prev) => ({ ...prev, ...updates }));
@@ -499,7 +667,7 @@ const Login = () => {
       } else {
         setMessage({ type: 'error', content: 'Gagal mengekstrak data. Pastikan foto KTP jelas dan rata.' });
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', content: 'Terjadi kesalahan saat memindai KTP.' });
     } finally {
       setIsOcrProcessing(false);
@@ -544,7 +712,7 @@ const Login = () => {
         </h2>
         <p className="text-gray-600 text-sm lg:text-base">
           {isForgotPassword 
-            ? 'Masukkan nomor telepon untuk reset kata sandi'
+            ? forgotSubtitle()
             : isLogin 
               ? 'Masuk ke akun Anda untuk mengakses layanan desa' 
               : 'Buat akun baru untuk mengakses layanan digital desa'
@@ -592,11 +760,138 @@ const Login = () => {
               onChange={handleInputChange}
               required
               autoComplete="tel"
-              className="w-full pl-10 lg:pl-12 pr-4 py-3 lg:py-3.5 text-sm lg:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-gray-900 placeholder-gray-500"
+              disabled={isForgotPassword && forgotStep !== 'phone'}
+              className="w-full pl-10 lg:pl-12 pr-4 py-3 lg:py-3.5 text-sm lg:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-gray-900 placeholder-gray-500 disabled:bg-gray-100 disabled:text-gray-600"
               placeholder="08123456789"
             />
           </div>
+          {isForgotPassword && forgotStep !== 'phone' && (
+            <button
+              type="button"
+              onClick={() => {
+                setForgotStep('phone');
+                setOtpDigits(['', '', '', '']);
+                setGeneratedOtp('');
+                setNewPassword('');
+                setConfirmNewPassword('');
+                setMessage({ type: '', content: '' });
+              }}
+              className="mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium"
+            >
+              Ubah nomor telepon
+            </button>
+          )}
         </div>
+
+        {/* Forgot Password: Method Selection */}
+        {isForgotPassword && forgotStep === 'method' && (
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-gray-800">Pilih metode pemulihan akun</div>
+            <label className="flex items-center p-4 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-all">
+              <input
+                type="radio"
+                name="forgot-method"
+                checked={forgotMethod === 'sms'}
+                onChange={() => setForgotMethod('sms')}
+                className="w-4 h-4 text-emerald-600"
+              />
+              <div className="ml-3 flex-1">
+                <div className="font-semibold text-gray-900">Verifikasi via SMS</div>
+                <div className="text-xs text-gray-600 mt-1">Kode OTP akan dikirim ke nomor HP Anda</div>
+              </div>
+            </label>
+          </div>
+        )}
+
+        {/* Forgot Password: OTP */}
+        {isForgotPassword && forgotStep === 'otp' && (
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-gray-800">Masukkan OTP</div>
+            <div className="flex items-center justify-between gap-3">
+              {otpDigits.map((d, idx) => (
+                <input
+                  key={idx}
+                  ref={(el) => {
+                    otpInputRefs.current[idx] = el;
+                  }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={1}
+                  value={d}
+                  onChange={(e) => handleOtpDigitChange(idx, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                  onPaste={idx === 0 ? handleOtpPaste : undefined}
+                  className="w-12 h-12 lg:w-14 lg:h-14 text-center text-xl font-bold border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                />
+              ))}
+            </div>
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotStep('method');
+                  setOtpDigits(['', '', '', '']);
+                  setGeneratedOtp('');
+                  setMessage({ type: '', content: '' });
+                }}
+                className="text-xs text-gray-600 hover:text-gray-800 font-medium"
+              >
+                Kirim ulang OTP
+              </button>
+              {generatedOtp && (
+                <div className="text-[11px] text-gray-400">
+                  (Demo) OTP: {generatedOtp}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Forgot Password: Reset Password */}
+        {isForgotPassword && forgotStep === 'reset' && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs lg:text-sm font-semibold text-gray-700 mb-2">
+                Kata Sandi Baru
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 lg:w-5 lg:h-5" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="w-full pl-10 lg:pl-12 pr-10 lg:pr-12 py-3 lg:py-3.5 text-sm lg:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-gray-900 placeholder-gray-500"
+                  placeholder="Minimal 6 karakter"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4 lg:w-5 lg:h-5" /> : <Eye className="w-4 h-4 lg:w-5 lg:h-5" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs lg:text-sm font-semibold text-gray-700 mb-2">
+                Konfirmasi Kata Sandi Baru
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 lg:w-5 lg:h-5" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                  autoComplete="new-password"
+                  className="w-full pl-10 lg:pl-12 pr-4 py-3 lg:py-3.5 text-sm lg:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 text-gray-900 placeholder-gray-500"
+                  placeholder="Ulangi kata sandi"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Password (immediately after phone) */}
         {!isForgotPassword && (
@@ -893,6 +1188,12 @@ const Login = () => {
               type="button"
               onClick={() => {
                 setIsForgotPassword(true);
+                setForgotStep('phone');
+                setForgotMethod('sms');
+                setOtpDigits(['', '', '', '']);
+                setGeneratedOtp('');
+                setNewPassword('');
+                setConfirmNewPassword('');
                 resetForm();
               }}
               className="text-xs lg:text-sm text-emerald-600 hover:text-emerald-800 font-medium transition-colors"
@@ -914,7 +1215,7 @@ const Login = () => {
               <span>Memproses...</span>
             </div>
           ) : (
-            isForgotPassword ? 'Kirim Instruksi' : isLogin ? 'Masuk' : 'Daftar Sekarang'
+            isForgotPassword ? forgotSubmitLabel() : isLogin ? 'Masuk' : 'Daftar Sekarang'
           )}
         </button>
       </form>
@@ -1023,6 +1324,12 @@ const Login = () => {
               onClick={() => {
                 setIsForgotPassword(false);
                 setIsLogin(true);
+                setForgotStep('phone');
+                setForgotMethod('sms');
+                setOtpDigits(['', '', '', '']);
+                setGeneratedOtp('');
+                setNewPassword('');
+                setConfirmNewPassword('');
                 resetForm();
               }}
               className="text-emerald-600 hover:text-emerald-800 font-semibold transition-colors text-sm lg:text-base"

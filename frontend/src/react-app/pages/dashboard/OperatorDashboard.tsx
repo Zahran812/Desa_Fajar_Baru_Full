@@ -23,6 +23,8 @@ import {
   HelpCircle, FileSpreadsheet, UserCheck, CreditCard, AlertCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Link } from 'react-router-dom';
 import {
   forceSeed,
@@ -236,6 +238,9 @@ interface CitizenData {
   dusun: string;
   kelurahan?: string;
   kecamatan?: string;
+  kabupaten_kota?: string;
+  provinsi?: string;
+  kode_pos?: string;
   no_kk: string;
   nama_kepala_keluarga?: string;
   status_dalam_keluarga: string;
@@ -323,6 +328,8 @@ const OperatorDashboard = () => {
   const [selectAll, setSelectAll] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<CitizenData[]>([]);
+  const [importTargetDusun, setImportTargetDusun] = useState<string>('');
+  const [importDusunDropdownOpen, setImportDusunDropdownOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
   
   // Population view states
@@ -1024,6 +1031,15 @@ const OperatorDashboard = () => {
     },
   ];
 
+  const importTargetDusunOptions = dusuns.map((d) => d.name);
+
+  const importValidCount = importPreview.filter((row) => {
+    const nik = String(row.nik || '').trim();
+    const nama = String(row.nama_lengkap || '').trim();
+    return nik !== '' && nama !== '';
+  }).length;
+  const importInvalidCount = importPreview.length - importValidCount;
+
   // citizensData will be filled from Excel import / API; no mock data
 
   useEffect(() => {
@@ -1047,6 +1063,8 @@ const OperatorDashboard = () => {
           const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
           const wsname = wb.SheetNames[0];
           const ws = wb.Sheets[wsname];
+
+          setImportTargetDusun('');
           
           console.log('=== DEBUGGING EXCEL IMPORT ===');
           console.log('Sheet Name:', wsname);
@@ -1091,6 +1109,22 @@ const OperatorDashboard = () => {
           if (data.length > 0) {
             console.log('Detected Columns:', Object.keys(data[0]));
           }
+
+          const detectDusunName = (source: string) => {
+            const s = (source || '').toLowerCase();
+            if (s.includes('dusun') && /dusun\s*1/.test(s)) return 'Dusun I';
+            if (s.includes('dusun') && /dusun\s*2\s*a/.test(s)) return 'Dusun II A';
+            if (s.includes('dusun') && /dusun\s*2\s*b/.test(s)) return 'Dusun II B';
+            if (s.includes('dusun') && /dusun\s*3\s*a/.test(s)) return 'Dusun III A';
+            if (s.includes('dusun') && /dusun\s*3\s*b/.test(s)) return 'Dusun III B';
+            if (s.includes('dusun') && /dusun\s*4/.test(s)) return 'Dusun IV';
+            if (s.includes('dusun') && /dusun\s*5/.test(s)) return 'Dusun V';
+            return '';
+          };
+
+          const detectedDusun = detectDusunName(wsname) || detectDusunName(file.name);
+
+          setImportTargetDusun(detectedDusun);
           
           // Map Excel columns to CitizenData dengan semua field
           const mappedData: CitizenData[] = data.map((row: any, index: number) => {
@@ -1119,24 +1153,57 @@ const OperatorDashboard = () => {
               return '';
             };
 
-            // Hitung umur dari tanggal lahir jika ada
-            const calculateAge = (birthDate: string) => {
-              if (!birthDate) return undefined;
-              try {
-                const parts = birthDate.split('-');
-                if (parts.length === 3) {
-                  const birthYear = parseInt(parts[2]);
-                  const currentYear = new Date().getFullYear();
-                  return currentYear - birthYear;
+            // Format tanggal lahir ke MM/DD/YYYY (leading zero, 4 digit tahun)
+            const pad2 = (n: number) => String(n).padStart(2, '0');
+            const formatDateObj = (d: Date) =>
+              `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())}/${d.getUTCFullYear()}`;
+            const formatBirthDate = (value: string) => {
+              if (!value) return '';
+              // Jika numeric (serial Excel), convert via Date
+              if (!isNaN(Number(value))) {
+                const parsed = XLSX.SSF.parse_date_code(Number(value));
+                if (parsed) {
+                  const dateObj = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+                  if (!isNaN(dateObj.getTime())) return formatDateObj(dateObj);
                 }
-              } catch (e) {
-                return undefined;
               }
-              return undefined;
+              // Normal string
+              const cleaned = value.trim();
+              const dateFromStr = new Date(cleaned);
+              if (!isNaN(dateFromStr.getTime())) {
+                return formatDateObj(new Date(Date.UTC(
+                  dateFromStr.getUTCFullYear(),
+                  dateFromStr.getUTCMonth(),
+                  dateFromStr.getUTCDate()
+                )));
+              }
+              // Try manual split
+              const splitters = ['-', '/'];
+              for (const s of splitters) {
+                if (cleaned.includes(s)) {
+                  const parts = cleaned.split(s).map(p => p.trim());
+                  if (parts.length === 3) {
+                    const [a, b, c] = parts;
+                    const year = c.length === 2 ? Number(`20${c}`) - (Number(c) > 30 ? 100 : 0) : Number(c);
+                    const month = Number(a) > 12 ? Number(b) : Number(a); // fallback
+                    const day = Number(a) > 12 ? Number(a) : Number(b);
+                    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                      const dateObj = new Date(Date.UTC(year, month - 1, day));
+                      if (!isNaN(dateObj.getTime())) return formatDateObj(dateObj);
+                    }
+                  }
+                }
+              }
+              return cleaned;
             };
 
-            const tanggalLahir = getVal('Tanggal Lahir', 'TANGGAL LAHIR', 'tanggal_lahir', 'TGL LAHIR', 'Tgl Lahir', 'TGL. LAHIR', 'Tanggal Lahir', 'TANGGAL LAHIR', 'Tgl. Lahir', 'TGL. LAHIR', 'TTL');
-            
+            const rawTanggalLahir = getVal('Tanggal Lahir', 'TANGGAL LAHIR', 'tanggal_lahir', 'TGL LAHIR', 'Tgl Lahir', 'TGL. LAHIR', 'Tanggal Lahir', 'TANGGAL LAHIR', 'Tgl. Lahir', 'TGL. LAHIR', 'TTL');
+            const tanggalLahir = formatBirthDate(rawTanggalLahir);
+
+            const umurRaw = getVal('Umur', 'UMUR', 'Usia', 'USIA');
+            const umurParsed = Number.parseInt(String(umurRaw || '').trim(), 10);
+            const umurValue = !Number.isNaN(umurParsed) ? umurParsed : undefined;
+
             return {
               id: citizensData.length + index + 1,
               no: index + 1,
@@ -1145,27 +1212,27 @@ const OperatorDashboard = () => {
               jenis_kelamin: getVal('Jenis Kelamin', 'JENIS KELAMIN', 'jenis_kelamin', 'JK', 'L/P', 'Kelamin', 'KELAMIN', 'Sex', 'Gender'),
               tempat_lahir: getVal('Tempat Lahir', 'TEMPAT LAHIR', 'tempat_lahir', 'Tmp Lahir', 'TMP LAHIR', 'Tmpt Lahir', 'TMPT LAHIR'),
               tanggal_lahir: tanggalLahir,
-              umur: calculateAge(tanggalLahir),
+              umur: umurValue,
               agama: getVal('Agama', 'AGAMA', 'agama', 'Agm', 'AGM'),
               status_perkawinan: getVal('Status Perkawinan', 'STATUS PERKAWINAN', 'status_perkawinan', 'STATUS KAWIN', 'Kawin', 'KAWIN', 'Status Kawin', 'STATUS KAWIN'),
-              pekerjaan: getVal('Pekerjaan', 'PEKERJAAN', 'pekerjaan', 'Pkj', 'PKJ', 'Kerja', 'KERJA'),
-              kewarganegaraan: getVal('Kewarganegaraan', 'KEWARGANEGARAAN', 'kewarganegaraan', 'WNI/WNA', 'Warga Negara', 'WARGA NEGARA') || 'WNI',
+              pekerjaan: getVal('Jenis Pekerjaan', 'JENIS PEKERJAAN', 'Pekerjaan', 'PEKERJAAN', 'pekerjaan', 'Pkj', 'PKJ', 'Kerja', 'KERJA'),
+              kewarganegaraan: getVal('Kewarganegaraan', 'KEWARGANEGARAAN', 'kewarganegaraan', 'WNI/WNA', 'Warga Negara', 'WARGA NEGARA'),
               alamat: getVal('Alamat', 'ALAMAT', 'alamat', 'Almt', 'ALMT', 'Alamat Lengkap', 'ALAMAT LENGKAP'),
               rt: getVal('RT', 'rt', 'R.T', 'R T', 'R.T.', 'No RT', 'NO RT'),
               rw: getVal('RW', 'rw', 'R.W', 'R W', 'R.W.', 'No RW', 'NO RW'),
-              dusun: getVal('Dusun', 'DUSUN', 'dusun', 'Dsn', 'DSN', 'Nama Dusun', 'NAMA DUSUN'),
-              kelurahan: getVal('Kelurahan', 'KELURAHAN', 'kelurahan', 'Kel', 'KEL', 'Desa', 'DESA', 'Nama Desa', 'NAMA DESA') || 'Fajar Baru',
-              kecamatan: getVal('Kecamatan', 'KECAMATAN', 'kecamatan', 'Kec', 'KEC', 'Nama Kecamatan', 'NAMA KECAMATAN') || 'Way Jepara',
+              dusun: detectedDusun || getVal('Dusun', 'DUSUN', 'dusun', 'Dsn', 'DSN', 'Nama Dusun', 'NAMA DUSUN'),
+              kelurahan: getVal('Kelurahan', 'KELURAHAN', 'kelurahan', 'Kel', 'KEL', 'Desa', 'DESA', 'Nama Desa', 'NAMA DESA'),
+              kecamatan: getVal('Kecamatan', 'KECAMATAN', 'kecamatan', 'Kec', 'KEC', 'Nama Kecamatan', 'NAMA KECAMATAN'),
               no_kk: getVal('No KK', 'NO KK', 'no_kk', 'NO. KK', 'NOMOR KK', 'Nomor KK', 'No. KK', 'KK', 'Nomor Kartu Keluarga', 'NOMOR KARTU KELUARGA'),
               nama_kepala_keluarga: getVal('Nama Kepala Keluarga', 'NAMA KEPALA KELUARGA', 'nama_kepala_keluarga', 'NAMA KK', 'Nama KK', 'Kepala Keluarga', 'KEPALA KELUARGA', 'KK'),
-              status_dalam_keluarga: getVal('Status Dalam Keluarga', 'STATUS DALAM KELUARGA', 'status_dalam_keluarga', 'STATUS KELUARGA', 'Status Keluarga', 'Shdk', 'SHDK'),
+              status_dalam_keluarga: getVal('Status Hubungan Dalam Keluarga', 'STATUS HUBUNGAN DALAM KELUARGA', 'Status Dalam Keluarga', 'STATUS DALAM KELUARGA', 'status_dalam_keluarga', 'STATUS KELUARGA', 'Status Keluarga', 'Shdk', 'SHDK'),
               pendidikan_terakhir: getVal('Pendidikan Terakhir', 'PENDIDIKAN TERAKHIR', 'pendidikan_terakhir', 'PENDIDIKAN', 'Pendidikan', 'Pend', 'PEND', 'Pddk', 'PDDK'),
               nama_ibu: getVal('Nama Ibu', 'NAMA IBU', 'nama_ibu', 'IBU', 'Ibu', 'Nama Ibu Kandung', 'NAMA IBU KANDUNG'),
               nama_ayah: getVal('Nama Ayah', 'NAMA AYAH', 'nama_ayah', 'AYAH', 'Ayah', 'Nama Ayah Kandung', 'NAMA AYAH KANDUNG'),
               golongan_darah: getVal('Golongan Darah', 'GOLONGAN DARAH', 'golongan_darah', 'GOL DARAH', 'GOL. DARAH', 'Gol Darah', 'Gol. Darah', 'Darah', 'DARAH'),
               status_perkawinan_dalam_kk: getVal('Status Perkawinan Dalam KK', 'status_perkawinan_dalam_kk', 'Status Kawin KK', 'STATUS KAWIN KK'),
               tanggal_perkawinan: getVal('Tanggal Perkawinan', 'TANGGAL PERKAWINAN', 'tanggal_perkawinan', 'Tgl Kawin', 'TGL KAWIN', 'Tanggal Kawin', 'TANGGAL KAWIN'),
-              kelainan_fisik_mental: getVal('Kelainan Fisik Mental', 'KELAINAN FISIK MENTAL', 'kelainan_fisik_mental', 'KELAINAN', 'Kelainan', 'Cacat', 'CACAT') || 'Tidak Ada',
+              kelainan_fisik_mental: getVal('Kelainan Fisik Mental', 'KELAINAN FISIK MENTAL', 'kelainan_fisik_mental', 'KELAINAN', 'Kelainan', 'Cacat', 'CACAT'),
               no_telepon: getVal('No Telepon', 'NO TELEPON', 'no_telepon', 'NO. TELEPON', 'TELEPON', 'HP', 'No HP', 'NO HP', 'Handphone', 'HANDPHONE', 'No. HP', 'NO. HP'),
               no_paspor: getVal('No Paspor', 'NO PASPOR', 'no_paspor', 'Nomor Paspor', 'NOMOR PASPOR', 'Paspor', 'PASPOR'),
               no_akta_lahir: getVal('No Akta Lahir', 'NO AKTA LAHIR', 'no_akta_lahir', 'Nomor Akta Lahir', 'NOMOR AKTA LAHIR', 'Akta Lahir', 'AKTA LAHIR'),
@@ -1208,29 +1275,39 @@ const OperatorDashboard = () => {
 
   const handleImportData = () => {
     if (importPreview.length > 0) {
-      // Filter hanya data yang valid (memiliki NIK dan Nama)
-      const validData = importPreview.filter(row => {
-        return row.nik && row.nik.trim() !== '' && 
-               row.nama_lengkap && row.nama_lengkap.trim() !== '';
-      });
-      
-      if (validData.length === 0) {
-        alert('Tidak ada data valid untuk diimport!\n\nPastikan setiap baris memiliki NIK dan Nama Lengkap.');
+      if (!importTargetDusun) {
+        alert('Pilih dusun tujuan import terlebih dahulu!');
         return;
       }
-      
-      const skipped = importPreview.length - validData.length;
-      setCitizensData(prev => [...prev, ...validData]);
-      
-      if (skipped > 0) {
-        alert(`Import selesai!\n\nBerhasil: ${validData.length} data\nDiabaikan: ${skipped} data (tidak lengkap)\n\nData yang valid telah ditambahkan ke database.`);
+      const validData = importPreview.filter((row) => {
+        return (
+          String(row.nik || '').trim() !== '' &&
+          String(row.nama_lengkap || '').trim() !== ''
+        );
+      });
+
+      const invalidCount = importPreview.length - validData.length;
+      const dataWithTargetDusun = importPreview.map((row) => ({
+        ...row,
+        dusun: importTargetDusun,
+      }));
+      setCitizensData(prev => [...prev, ...dataWithTargetDusun]);
+
+      if (invalidCount > 0) {
+        alert(
+          `Import selesai!\n\nTotal: ${importPreview.length} data\nValid: ${validData.length} data\nTidak lengkap: ${invalidCount} data (ditandai merah)\n\nSemua data telah ditambahkan ke database.`,
+        );
       } else {
-        alert(`Berhasil mengimport ${validData.length} data penduduk!\n\nSemua data telah ditambahkan ke database.`);
+        alert(
+          `Berhasil mengimport ${importPreview.length} data penduduk!\n\nSemua data telah ditambahkan ke database.`,
+        );
       }
       
       setShowImportModal(false);
       setImportFile(null);
       setImportPreview([]);
+      setImportTargetDusun('');
+      setImportDusunDropdownOpen(false);
     }
   };
 
@@ -1244,33 +1321,92 @@ const OperatorDashboard = () => {
       return;
     }
 
+    const excelRows = dataToExport.map((c) => ({
+      'RT': c.rt,
+      'RW': c.rw,
+      'Alamat': c.alamat,
+            'Nomor Kartu Keluarga': c.no_kk,
+      'Nama Lengkap': c.nama_lengkap,
+      'NIK': c.nik,
+      'Jenis Kelamin': c.jenis_kelamin,
+      'Tempat Lahir': c.tempat_lahir,
+      'Tanggal Lahir': c.tanggal_lahir,
+      'Umur': c.umur ?? '',
+      'Agama': c.agama,
+      'Pendidikan': c.pendidikan_terakhir,
+      'Jenis Pekerjaan': c.pekerjaan,
+      'Golongan Darah': c.golongan_darah || '',
+      'Status Perkawinan': c.status_perkawinan,
+      'Status Hubungan Dalam Keluarga':
+        c.status_dalam_keluarga || c.status_hubungan_dalam_keluarga || '',
+      'Nama Ayah': c.nama_ayah || '',
+      'Nama Ibu': c.nama_ibu || '',
+    }));
+
+    const headerOrder = Object.keys(excelRows[0] || {});
+
     if (exportFormat === 'excel') {
-      // Export to Excel
-      const ws = XLSX.utils.json_to_sheet(dataToExport.map(c => ({
-        'NIK': c.nik,
-        'Nama Lengkap': c.nama_lengkap,
-        'Jenis Kelamin': c.jenis_kelamin,
-        'Tempat Lahir': c.tempat_lahir,
-        'Tanggal Lahir': c.tanggal_lahir,
-        'Agama': c.agama,
-        'Status Perkawinan': c.status_perkawinan,
-        'Pekerjaan': c.pekerjaan,
-        'Alamat': c.alamat,
-        'RT': c.rt,
-        'RW': c.rw,
-        'Dusun': c.dusun,
-        'No KK': c.no_kk,
-        'Status Dalam Keluarga': c.status_dalam_keluarga,
-        'Pendidikan Terakhir': c.pendidikan_terakhir,
-        'No Telepon': c.no_telepon || ''
-      })));
+      const ws = XLSX.utils.json_to_sheet(excelRows, { header: headerOrder });
+
+      // Auto-fit column widths based on the longest cell content per column
+      const colWidths = headerOrder.map((h) => {
+        const headerLen = String(h).length;
+        const maxCellLen = excelRows.reduce((max, row) => {
+          const v = (row as Record<string, unknown>)[h];
+          const len = String(v ?? '').length;
+          return Math.max(max, len);
+        }, 0);
+        const wch = Math.min(Math.max(headerLen, maxCellLen) + 2, 60);
+        return { wch };
+      });
+      (ws as any)['!cols'] = colWidths;
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Data Penduduk');
       XLSX.writeFile(wb, `Data_Penduduk_${new Date().toISOString().split('T')[0]}.xlsx`);
       alert(`Berhasil export ${dataToExport.length} data ke Excel!`);
     } else {
-      // Export to PDF - will be implemented with jspdf
-      alert('Export PDF sedang dalam pengembangan. Silakan gunakan format Excel terlebih dahulu.');
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'pt',
+        format: 'a4',
+      });
+
+      doc.setFontSize(12);
+      doc.text('Data Penduduk', 40, 40);
+      doc.setFontSize(9);
+      doc.text(`Total: ${dataToExport.length} data`, 40, 58);
+
+      const body = excelRows.map((row) => headerOrder.map((h) => String((row as any)[h] ?? '')));
+
+      autoTable(doc, {
+        head: [headerOrder],
+        body,
+        startY: 75,
+        theme: 'grid',
+        styles: {
+          fontSize: 7,
+          cellPadding: 3,
+          overflow: 'linebreak',
+          valign: 'top',
+        },
+        headStyles: {
+          fillColor: [240, 240, 240],
+          textColor: 20,
+          fontStyle: 'bold',
+        },
+        columnStyles: {
+          2: { cellWidth: 160 },
+          5: { cellWidth: 120 },
+          6: { cellWidth: 150 },
+          7: { cellWidth: 110 },
+          17: { cellWidth: 160 },
+        },
+        margin: { left: 40, right: 40 },
+      });
+
+      doc.save(`Data_Penduduk_${new Date().toISOString().split('T')[0]}.pdf`);
+      alert(`Berhasil export ${dataToExport.length} data ke PDF!`);
     }
 
     setShowExportModal(false);
@@ -5509,7 +5645,7 @@ const OperatorDashboard = () => {
       {/* Import Modal */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-[98vw] xl:max-w-6xl max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
               <div className="flex justify-between items-center">
                 <div>
@@ -5521,6 +5657,8 @@ const OperatorDashboard = () => {
                     setShowImportModal(false);
                     setImportFile(null);
                     setImportPreview([]);
+                    setImportTargetDusun('');
+                    setImportDusunDropdownOpen(false);
                   }}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -5591,6 +5729,7 @@ const OperatorDashboard = () => {
                         onClick={() => {
                           setImportFile(null);
                           setImportPreview([]);
+                          setImportTargetDusun('');
                           // Reset file input
                           const fileInput = document.getElementById('import-file') as HTMLInputElement;
                           if (fileInput) fileInput.value = '';
@@ -5622,7 +5761,7 @@ const OperatorDashboard = () => {
                           <div className="text-xs text-green-700 font-medium">Data Valid</div>
                         </div>
                         <div className="text-2xl font-bold text-green-600">
-                          {importPreview.filter(row => row.nik && row.nik.trim() !== '' && row.nama_lengkap && row.nama_lengkap.trim() !== '').length}
+                          {importValidCount}
                         </div>
                         <div className="text-xs text-green-600 mt-1">Siap diimport</div>
                       </div>
@@ -5632,22 +5771,58 @@ const OperatorDashboard = () => {
                           <div className="text-xs text-red-700 font-medium">Data Tidak Lengkap</div>
                         </div>
                         <div className="text-2xl font-bold text-red-600">
-                          {importPreview.length - importPreview.filter(row => row.nik && row.nik.trim() !== '' && row.nama_lengkap && row.nama_lengkap.trim() !== '').length}
+                          {importInvalidCount}
                         </div>
-                        <div className="text-xs text-red-600 mt-1">Akan diabaikan</div>
+                        <div className="text-xs text-red-600 mt-1">Ditandai merah</div>
                       </div>
                     </div>
-                    {importPreview.filter(row => row.nik && row.nik.trim() !== '' && row.nama_lengkap && row.nama_lengkap.trim() !== '').length < importPreview.length && (
+                    {importInvalidCount > 0 && (
                       <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded p-3">
                         <div className="flex items-start space-x-2">
                           <AlertCircle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
                           <div className="text-xs text-yellow-800">
-                            <strong>Perhatian:</strong> {importPreview.length - importPreview.filter(row => row.nik && row.nik.trim() !== '' && row.nama_lengkap && row.nama_lengkap.trim() !== '').length} baris data tidak lengkap (NIK atau Nama kosong) dan akan diabaikan saat import. 
-                            Baris yang tidak valid ditandai dengan ❌ dan background merah di tabel preview.
+                            <strong>Perhatian:</strong> {importInvalidCount} baris data tidak lengkap (NIK atau Nama kosong). 
+                            Baris yang tidak valid ditandai dengan ❌ dan background merah di tabel preview, namun tetap akan diimport.
                           </div>
                         </div>
                       </div>
                     )}
+
+                    <div className="mt-4 bg-white border border-gray-200 rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setImportDusunDropdownOpen((v) => !v)}
+                        className="w-full flex items-center justify-between px-4 py-3 text-left"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-gray-800">Dusun Tujuan Import</div>
+                          <div className="text-xs text-gray-600 mt-0.5">
+                            {importTargetDusun ? `Terpilih: ${importTargetDusun}` : 'Klik untuk memilih dusun tujuan'}
+                          </div>
+                        </div>
+                        <span className="text-gray-500 text-sm">{importDusunDropdownOpen ? '▲' : '▼'}</span>
+                      </button>
+                      {importDusunDropdownOpen && (
+                        <div className="px-4 pb-4">
+                          <label className="block text-xs font-semibold text-gray-600 mb-1">Pilih Dusun</label>
+                          <select
+                            value={importTargetDusun}
+                            onChange={(e) => setImportTargetDusun(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
+                          >
+                            <option value="">-- Pilih Dusun Tujuan --</option>
+                            {importTargetDusunOptions.map((d) => (
+                              <option key={d} value={d}>
+                                {d}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="text-xs text-gray-600 mt-2">
+                            Semua data yang diimport akan dimasukkan ke dusun ini.
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex items-center justify-between mb-3">
@@ -5655,11 +5830,11 @@ const OperatorDashboard = () => {
                       Preview Data ({importPreview.length} baris)
                     </h4>
                     <div className="flex items-center space-x-2">
-                      {importPreview.filter(row => row.nik && row.nik.trim() !== '' && row.nama_lengkap && row.nama_lengkap.trim() !== '').length > 0 ? (
+                      {importValidCount > 0 ? (
                         <>
                           <CheckCircle className="w-5 h-5 text-green-600" />
                           <span className="text-sm text-green-600 font-medium">
-                            {importPreview.filter(row => row.nik && row.nik.trim() !== '' && row.nama_lengkap && row.nama_lengkap.trim() !== '').length} data siap diimport
+                            {importValidCount} data siap diimport
                           </span>
                         </>
                       ) : (
@@ -5674,39 +5849,26 @@ const OperatorDashboard = () => {
                     <div className="overflow-x-auto overflow-y-auto max-h-[500px]">
                       <table className="min-w-full divide-y divide-gray-200 text-sm">
                         <thead className="bg-gradient-to-r from-blue-50 to-emerald-50 sticky top-0 z-10">
-                          <tr>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 sticky left-0 bg-blue-50">No</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[140px]">NIK</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[180px] border-r border-gray-200">Nama Lengkap</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Jenis Kelamin</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[120px] border-r border-gray-200">Tempat Lahir</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Tgl Lahir</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200">Umur</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Agama</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[120px]">Status Perkawinan</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[140px] border-r border-gray-200">Pekerjaan</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Kewarganegaraan</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[200px] border-r border-gray-200">Alamat</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200">RT</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200">RW</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[120px] border-r border-gray-200">Dusun</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Kelurahan</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Kecamatan</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[140px]">No KK</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[160px] border-r border-gray-200">Nama Kepala Keluarga</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[140px] border-r border-gray-200">Status Dalam Keluarga</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[140px] border-r border-gray-200">Pendidikan Terakhir</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[140px] border-r border-gray-200">Nama Ibu</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[140px] border-r border-gray-200">Nama Ayah</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[100px]">Golongan Darah</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[140px]">Status Perkawinan KK</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[120px]">Tgl Perkawinan</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[160px] border-r border-gray-200">Kelainan Fisik/Mental</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[120px]">No Telepon</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[120px]">No Paspor</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[120px]">No Akta Lahir</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide border-r border-gray-200 min-w-[120px]">No Akta Kawin</th>
-                            <th className="px-3 py-3 text-left text-xs font-bold text-gray-700 uppercase tracking-wide min-w-[120px]">Tgl Akhir Paspor</th>
+                          <tr className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                            <th className="px-3 py-2 text-left border-r border-gray-200 sticky left-0 bg-blue-50 whitespace-nowrap">No</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">RT</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">RW</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 min-w-[200px]">Alamat</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 min-w-[170px] whitespace-nowrap">Nomor Kartu Keluarga</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Nama Lengkap</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">NIK</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Jenis Kelamin</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Tempat Lahir</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Tanggal Lahir</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Umur</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Agama</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Pendidikan</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Jenis Pekerjaan</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Golongan Darah</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Status Perkawinan</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 min-w-[200px] whitespace-nowrap">Status Hubungan Dalam Keluarga</th>
+                            <th className="px-3 py-2 text-left border-r border-gray-200 whitespace-nowrap">Nama Ayah</th>
+                            <th className="px-3 py-2 text-left whitespace-nowrap">Nama Ibu</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -5714,10 +5876,11 @@ const OperatorDashboard = () => {
                             // Validasi data wajib
                             const isValid = citizen.nik && citizen.nama_lengkap && citizen.jenis_kelamin;
                             const rowClass = isValid ? 'hover:bg-gray-50' : 'bg-red-50 hover:bg-red-100';
+                            const stickyBgClass = isValid ? 'bg-white' : 'bg-red-50';
                             
                             return (
                             <tr key={idx} className={rowClass}>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200 sticky left-0 bg-white">
+                              <td className={`px-3 py-2 text-sm text-gray-900 border-r border-gray-200 sticky left-0 ${stickyBgClass} whitespace-nowrap`}>
                                 <div className="flex items-center space-x-2">
                                   <span className="font-semibold">{idx + 1}</span>
                                   {isValid ? (
@@ -5727,55 +5890,42 @@ const OperatorDashboard = () => {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-3 py-3 text-sm font-mono border-r border-gray-200">
-                                {citizen.nik ? (
-                                  <span className="text-gray-900 font-semibold">{citizen.nik}</span>
-                                ) : (
-                                  <span className="text-red-600 font-bold bg-red-100 px-2 py-1 rounded text-xs">KOSONG</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 text-sm font-medium border-r border-gray-200">
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 text-center whitespace-nowrap">{citizen.rt || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 text-center whitespace-nowrap">{citizen.rw || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-normal break-words min-w-[200px]">{citizen.alamat || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 font-mono border-r border-gray-200 whitespace-nowrap min-w-[170px]">{citizen.no_kk || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm font-medium border-r border-gray-200 whitespace-nowrap">
                                 {citizen.nama_lengkap ? (
                                   <span className="text-gray-900 font-semibold">{citizen.nama_lengkap}</span>
                                 ) : (
                                   <span className="text-red-600 font-bold bg-red-100 px-2 py-1 rounded text-xs">KOSONG</span>
                                 )}
                               </td>
-                              <td className="px-3 py-3 text-sm border-r border-gray-200">
+                              <td className="px-3 py-2 text-sm font-mono border-r border-gray-200 whitespace-nowrap">
+                                {citizen.nik ? (
+                                  <span className="text-gray-900 font-semibold">{citizen.nik}</span>
+                                ) : (
+                                  <span className="text-red-600 font-bold bg-red-100 px-2 py-1 rounded text-xs">KOSONG</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-sm border-r border-gray-200 whitespace-nowrap">
                                 {citizen.jenis_kelamin ? (
                                   <span className="text-gray-900 font-semibold">{citizen.jenis_kelamin}</span>
                                 ) : (
                                   <span className="text-red-600 font-bold bg-red-100 px-2 py-1 rounded text-xs">KOSONG</span>
                                 )}
                               </td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.tempat_lahir || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.tanggal_lahir || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200 text-center">{citizen.umur || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.agama || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.status_perkawinan || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.pekerjaan || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.kewarganegaraan || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.alamat || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200 text-center font-semibold">{citizen.rt || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200 text-center font-semibold">{citizen.rw || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.dusun || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.kelurahan || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.kecamatan || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 font-mono border-r border-gray-200">{citizen.no_kk || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.nama_kepala_keluarga || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.status_dalam_keluarga || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.pendidikan_terakhir || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.nama_ibu || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.nama_ayah || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200 text-center">{citizen.golongan_darah || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.status_perkawinan_dalam_kk || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.tanggal_perkawinan || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.kelainan_fisik_mental || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.no_telepon || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.no_paspor || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.no_akta_lahir || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900 border-r border-gray-200">{citizen.no_akta_kawin || <span className="text-gray-400 italic">-</span>}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900">{citizen.tanggal_akhir_paspor || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.tempat_lahir || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.tanggal_lahir || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 text-center whitespace-nowrap">{citizen.umur || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.agama || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.pendidikan_terakhir || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.pekerjaan || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.golongan_darah || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.status_perkawinan || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-normal break-words min-w-[200px]">{citizen.status_dalam_keluarga || citizen.status_hubungan_dalam_keluarga || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 border-r border-gray-200 whitespace-nowrap">{citizen.nama_ayah || <span className="text-gray-400 italic">-</span>}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 whitespace-nowrap">{citizen.nama_ibu || <span className="text-gray-400 italic">-</span>}</td>
                             </tr>
                             );
                           })}
@@ -5795,15 +5945,15 @@ const OperatorDashboard = () => {
                     </div>
                     <div className="bg-green-50 rounded-lg p-3">
                       <div className="text-2xl font-bold text-green-600">
-                        {importPreview.filter(c => c.nik && c.nama_lengkap).length}
+                        {importValidCount}
                       </div>
                       <div className="text-xs text-green-700">Data Valid</div>
                     </div>
                     <div className="bg-yellow-50 rounded-lg p-3">
                       <div className="text-2xl font-bold text-yellow-600">
-                        {new Set(importPreview.map(c => c.dusun)).size}
+                        {importTargetDusun || '-'}
                       </div>
-                      <div className="text-xs text-yellow-700">Dusun</div>
+                      <div className="text-xs text-yellow-700">Dusun Tujuan</div>
                     </div>
                     <div className="bg-emerald-50 rounded-lg p-3">
                       <div className="text-2xl font-bold text-emerald-600">
@@ -5820,7 +5970,7 @@ const OperatorDashboard = () => {
             <div className="p-6 border-t border-gray-200 bg-gray-50 flex space-x-3">
               <button
                 onClick={handleImportData}
-                disabled={importPreview.length === 0}
+                disabled={importPreview.length === 0 || !importTargetDusun}
                 className="flex-1 flex items-center justify-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Upload className="w-5 h-5" />
@@ -5831,6 +5981,7 @@ const OperatorDashboard = () => {
                   setShowImportModal(false);
                   setImportFile(null);
                   setImportPreview([]);
+                  setImportTargetDusun('');
                 }}
                 className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
               >

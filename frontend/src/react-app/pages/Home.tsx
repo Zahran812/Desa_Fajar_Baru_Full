@@ -133,14 +133,14 @@ export default function Home() {
           </p>
 
           <div className="overflow-x-auto pb-2">
-            <div className="flex gap-5 md:gap-6 lg:gap-8 min-w-max">
+            <div className="flex gap-4 md:gap-6 lg:gap-8 min-w-max">
               {businessUnitsHome.map((unit) => (
                 <div
                   key={unit.id}
-                  className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 flex-shrink-0 w-full sm:w-[22rem] lg:w-[23%]"
+                  className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 flex-shrink-0 w-[85vw] sm:w-[22rem] lg:w-[23%] max-w-sm"
                 >
                   {/* Image Section */}
-                  <div className="h-48 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden">
+                  <div className="h-40 sm:h-48 bg-gradient-to-br from-gray-100 to-gray-200 relative overflow-hidden">
                     <img
                       src={`${import.meta.env.BASE_URL}${unit.image}`}
                       alt={`${unit.name} - Unit Usaha BUMDES Madani Desa Fajar Baru`}

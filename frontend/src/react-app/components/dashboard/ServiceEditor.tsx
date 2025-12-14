@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Save, X, FileText, Download,
   AlertCircle, Clock, DollarSign, CheckCircle, Plus, Trash2, Link, ChevronDown,
-  Briefcase, Users, Home, School, Baby, FileCheck, ClipboardList, Building2, Stamp, LucideIcon, Pencil, Mail
+  Briefcase, Users, Home, School, Baby, FileCheck, ClipboardList, Building2, Stamp, LucideIcon, Pencil
 } from 'lucide-react';
 import { apiGet, apiPost, apiPut, apiDelete } from '@/react-app/lib/api';
 import LetterTemplateEditor from './LetterTemplateEditor';
