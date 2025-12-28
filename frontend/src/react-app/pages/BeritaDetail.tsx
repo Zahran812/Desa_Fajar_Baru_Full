@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import PageLayout from '@/react-app/components/PageLayout';
 import { 
-  MessageCircle, Send, Calendar, User, Eye, Tag, Share2, Heart, Bookmark
+  MessageCircle, Send, Calendar, User, Eye, Tag, Share2, Link as LinkIcon, Copy
 } from 'lucide-react';
 import { categoryLabels } from '@/react-app/data/beritaData';
 import { apiFetch } from '@/react-app/lib/api';
@@ -28,6 +28,16 @@ interface Article {
   comments: Comment[];
 }
 
+const articleBodyStyles = `
+.article-body {
+  text-align: justify;
+  line-height: 1.8;
+}
+.article-body p { margin-bottom: 1rem; }
+.article-body img { max-width: 100%; display: block; margin: 1.25rem auto; border-radius: 0.5rem; }
+.article-body h1, .article-body h2, .article-body h3, .article-body h4 { margin-top: 1.5rem; margin-bottom: 0.75rem; }
+`;
+
 const BeritaDetail = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -41,6 +51,8 @@ const BeritaDetail = () => {
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!slug) {
@@ -83,9 +95,9 @@ const BeritaDetail = () => {
         }
 
         setError(null);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error fetching detail page data:", err);
-        setError(err.message);
+        setError(err instanceof Error ? err.message : 'Gagal memuat artikel.');
       } finally {
         setLoading(false);
       }
@@ -93,6 +105,51 @@ const BeritaDetail = () => {
 
     fetchArticleData();
   }, [slug]);
+
+  // Inject meta tags for richer share preview (title + image)
+  useEffect(() => {
+    if (!article) return;
+    const setMeta = (property: string, content: string) => {
+      let tag = document.querySelector<HTMLMetaElement>(`meta[property='${property}']`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute('property', property);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+    };
+    const setNameMeta = (name: string, content: string) => {
+      let tag = document.querySelector<HTMLMetaElement>(`meta[name='${name}']`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute('name', name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+    };
+    const url = window.location.href;
+    setMeta('og:title', article.title);
+    setMeta('og:description', article.excerpt || article.content?.substring(0, 120) || '');
+    setMeta('og:image', article.image_url);
+    setMeta('og:url', url);
+    setMeta('og:type', 'article');
+    setNameMeta('twitter:card', 'summary_large_image');
+    setNameMeta('twitter:title', article.title);
+    setNameMeta('twitter:description', article.excerpt || article.content?.substring(0, 120) || '');
+    setNameMeta('twitter:image', article.image_url);
+    setNameMeta('twitter:url', url);
+  }, [article]);
+
+  // Close share menu when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(e.target as Node)) {
+        setShareMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const formatDate = (dateString: string, includeTime = false) => {
     const date = new Date(dateString);
@@ -159,11 +216,78 @@ const BeritaDetail = () => {
       });
 
       setNewComment('');
-    } catch (err: any) {
-      setCommentError(err.message);
+    } catch (err: unknown) {
+      setCommentError(err instanceof Error ? err.message : 'Gagal mengirim komentar.');
     } finally {
       setSubmittingComment(false);
     }
+  };
+
+  const isLikelyHtml = (text: string) => /<\/?[a-z][\s\S]*>/i.test(text);
+  const escapeHtml = (text: string) =>
+    text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  const renderContent = (raw: string) => {
+    if (!raw) return '';
+    if (isLikelyHtml(raw)) return raw;
+    const paragraphs = raw.trim().split(/\n{2,}/);
+    return paragraphs
+      .map((p) => `<p>${escapeHtml(p).replace(/\n/g, '<br />')}</p>`)
+      .join('');
+  };
+
+  const shareUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    if (article?.slug) return `${window.location.origin}/share/${article.slug}`;
+    if (slug) return `${window.location.origin}/share/${slug}`;
+    return window.location.href;
+  }, [article?.slug, slug]);
+
+  const handleShare = async () => {
+    if (!article) return;
+    const shareData: ShareData = {
+      title: article.title,
+      text: article.excerpt || article.title,
+      url: shareUrl,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch {
+        // fall through to fallback menu
+      }
+    }
+    setShareMenuOpen((prev) => !prev);
+  };
+
+  const copyLink = async () => {
+    const url = shareUrl;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert('Tautan disalin.');
+    } catch {
+      alert('Gagal menyalin tautan.');
+    }
+  };
+
+  const shareLinks = (title: string, image: string) => {
+    const url = encodeURIComponent(shareUrl);
+    const text = encodeURIComponent(title);
+    const img = encodeURIComponent(image);
+    return [
+      { name: 'WhatsApp', href: `https://wa.me/?text=${text}%20${url}` },
+      { name: 'Telegram', href: `https://t.me/share/url?url=${url}&text=${text}` },
+      { name: 'Facebook', href: `https://www.facebook.com/sharer/sharer.php?u=${url}` },
+      { name: 'X (Twitter)', href: `https://twitter.com/intent/tweet?url=${url}&text=${text}` },
+      { name: 'LinkedIn', href: `https://www.linkedin.com/shareArticle?mini=true&url=${url}&title=${text}` },
+      { name: 'Email', href: `mailto:?subject=${text}&body=${text}%0A${url}` },
+      { name: 'Pinterest', href: `https://pinterest.com/pin/create/button/?url=${url}&media=${img}&description=${text}` },
+    ];
   };
 
   if (loading) {
@@ -211,6 +335,7 @@ const BeritaDetail = () => {
     >
       <div className="py-4 md:py-8 lg:py-16">
         <div className="container mx-auto px-2 sm:px-4 max-w-7xl">
+          <style>{articleBodyStyles}</style>
           <div className="grid lg:grid-cols-4 gap-4 md:gap-6 lg:gap-8">
             
             {/* Main Content */}
@@ -231,18 +356,38 @@ const BeritaDetail = () => {
                         {categoryLabels[article.category] || article.category}
                       </span>
                       <div className="flex items-center space-x-3 md:space-x-4">
-                        <button className="flex items-center space-x-1 md:space-x-2 text-gray-600 hover:text-village-green transition-colors text-sm md:text-base">
-                          <Share2 size={16} className="md:w-[18px] md:h-[18px]" />
-                          <span className="hidden sm:inline">Bagikan</span>
-                        </button>
-                        <button className="flex items-center space-x-1 md:space-x-2 text-gray-600 hover:text-red-500 transition-colors text-sm md:text-base">
-                          <Heart size={16} className="md:w-[18px] md:h-[18px]" />
-                          <span className="hidden sm:inline">Suka</span>
-                        </button>
-                        <button className="flex items-center space-x-1 md:space-x-2 text-gray-600 hover:text-blue-500 transition-colors text-sm md:text-base">
-                          <Bookmark size={16} className="md:w-[18px] md:h-[18px]" />
-                          <span className="hidden sm:inline">Simpan</span>
-                        </button>
+                        <div className="relative" ref={shareMenuRef}>
+                          <button
+                            onClick={handleShare}
+                            className="flex items-center space-x-1 md:space-x-2 text-gray-600 hover:text-village-green transition-colors text-sm md:text-base"
+                          >
+                            <Share2 size={16} className="md:w-[18px] md:h-[18px]" />
+                            <span className="hidden sm:inline">Bagikan</span>
+                          </button>
+                          {shareMenuOpen && article && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 z-20 p-3 space-y-2">
+                              <div className="text-xs font-semibold text-gray-500 px-1">Bagikan</div>
+                              <button
+                                onClick={copyLink}
+                                className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700"
+                              >
+                                <Copy size={14} /> Salin Tautan
+                              </button>
+                              {shareLinks(article.title, article.image_url).map(link => (
+                                <a
+                                  key={link.name}
+                                  href={link.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700"
+                                  onClick={() => setShareMenuOpen(false)}
+                                >
+                                  <LinkIcon size={14} /> {link.name}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     
@@ -266,7 +411,7 @@ const BeritaDetail = () => {
                     </div>
                   </div>
 
-                  <div className="prose max-w-none text-justify" dangerouslySetInnerHTML={{ __html: article.content }}></div>
+                  <div className="article-body" dangerouslySetInnerHTML={{ __html: renderContent(article.content) }}></div>
 
                   {article.tags && article.tags.length > 0 && (
                     <div className="mt-6 md:mt-8 pt-4 md:pt-6 border-t border-gray-200">

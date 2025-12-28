@@ -356,6 +356,16 @@ const Administrasi: React.FC<AdministrasiProps> = ({
     }
     if (!confirm('Anda yakin data yang diinput sudah benar? Surat akan dibuat dan dikirim ke Kepala Desa untuk ditinjau.')) return;
 
+    const numberFields = ['nomor_surat', 'no_surat', 'nomor'];
+    const payloadLetterData = placeholders.length
+      ? { ...placeholderValues }
+      : { ...letterData as Record<string, string> };
+    if (letterNumber.trim()) {
+      numberFields.forEach(field => {
+        payloadLetterData[field] = letterNumber;
+      });
+    }
+
     setSubmitting(true);
     try {
         const token = localStorage.getItem('auth_token');
@@ -367,7 +377,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
                 'Accept': 'application/json',
             },
             body: JSON.stringify({
-                letter_data: placeholders.length ? placeholderValues : letterData,
+                letter_data: payloadLetterData,
                 letter_number: letterNumber,
                 template_id: templateHtml?.template_id,
             }),
@@ -381,7 +391,7 @@ const Administrasi: React.FC<AdministrasiProps> = ({
                         ...req,
                         status: 'kades_review',
                         generated_html_content: result.request.generated_html_content,
-                        letter_input_data: placeholders.length ? placeholderValues : letterData,
+                        letter_input_data: payloadLetterData,
                       }
                     : req
             ));
@@ -439,9 +449,18 @@ const Administrasi: React.FC<AdministrasiProps> = ({
 
   const normalizeAssetUrls = useCallback((html: string) => {
     const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-    const baseUrl = (import.meta.env.BASE_URL || '').replace(/\/$/, '');
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const stripBasePrefix = (path: string) => {
+      const escapedBase = baseUrl.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+      return path.replace(new RegExp(`^${escapedBase}`), '');
+    };
     const toApi = (path: string) => `${apiBase}/${path.replace(/^\//, '')}`;
-    const toBase = (path: string) => `${baseUrl}/${path.replace(/^\//, '')}`;
+    const toBase = (path: string) => {
+      const cleaned = stripBasePrefix(path);
+      const basePath = `${baseUrl}${cleaned.replace(/^\/+/, '')}`;
+      return origin ? `${origin}${basePath}` : basePath;
+    };
     return html
       // handle Blade-style {{ asset('path') }} (general, kecuali kop/)
       .replace(/{{\s*asset\(['"](?!kop\/)([^'"]+)['"]\)\s*}}/g, (_m, p1) => toApi(p1))
@@ -450,12 +469,14 @@ const Administrasi: React.FC<AdministrasiProps> = ({
       // kop assets → BASE_URL (frontend public)
       .replace(/asset\(['"]kop\/([^'"]+)['"]\)/g, (_m, p1) => toBase(`kop/${p1}`))
       .replace(/{{\s*asset\(['"]kop\/([^'"]+)['"]\)\s*}}/g, (_m, p1) => toBase(`kop/${p1}`))
-      // handle relative src paths for kop/* via BASE_URL
-      .replace(/src=["'](?!https?:\/\/)(\/?)(kop\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
-      // handle relative src paths for Logo/* via BASE_URL (public assets)
-      .replace(/src=["'](?!https?:\/\/)(\/?)(Logo\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
-      // fallback: if masih tersisa {{ /kop/... }} bungkus, hilangkan braces
-      .replace(/{{\s*\/?(kop\/[^}]+)\s*}}/g, (_m, p1) => toBase(p1));
+      // handle relative src paths for kop/* via BASE_URL (allow optional /frontend/)
+      .replace(/src=["'](?!https?:\/\/)(\/?(?:frontend\/)?)(kop\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
+      // handle relative src paths for Logo/* via BASE_URL (public assets, allow optional /frontend/)
+      .replace(/src=["'](?!https?:\/\/)(\/?(?:frontend\/)?)(Logo\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
+      // fallback: if masih tersisa {{ /kop/... }} bungkus, hilangkan braces (allow optional /frontend/)
+      .replace(/{{\s*\/?(?:frontend\/)?(kop\/[^}]+)\s*}}/g, (_m, p1) => toBase(p1))
+      // unwrap brace-wrapped absolute URLs (already correct)
+      .replace(/{{\s*(https?:\/\/[^}\s]+)\s*}}/g, (_m, p1) => p1);
   }, []);
 
   const renderLetterTemplate = () => {

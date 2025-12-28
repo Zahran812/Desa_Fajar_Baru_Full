@@ -95,9 +95,19 @@ const KOP_STYLE_INTERNAL = `
 // ==========================================================
 const normalizeAssetUrls = (html: string) => {
  const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
- const baseUrl = (import.meta.env.BASE_URL || '').replace(/\/$/, '');
+ const baseUrl = import.meta.env.BASE_URL || '/';
+ const origin = typeof window !== 'undefined' ? window.location.origin : '';
+ const stripBasePrefix = (path: string) => {
+  const escapedBase = baseUrl.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+  return path.replace(new RegExp(`^${escapedBase}`), '');
+ };
  const toApi = (path: string) => `${apiBase}/${path.replace(/^\//, '')}`;
- const toBase = (path: string) => `${baseUrl}/${path.replace(/^\//, '')}`;
+ const toBase = (path: string) => {
+  const cleaned = stripBasePrefix(path);
+  const basePath = `${baseUrl}${cleaned.replace(/^\/+/, '')}`;
+  return origin ? `${origin}${basePath}` : basePath;
+ };
+
  return html
   // handle Blade-style {{ asset('path') }} (general, kecuali kop/)
   .replace(/{{\s*asset\(['"](?!kop\/)([^'"]+)['"]\)\s*}}/g, (_m, p1) => toApi(p1))
@@ -106,12 +116,14 @@ const normalizeAssetUrls = (html: string) => {
   // kop assets  BASE_URL (frontend public)
   .replace(/asset\(['"]kop\/([^'"]+)['"]\)/g, (_m, p1) => toBase(`kop/${p1}`))
   .replace(/{{\s*asset\(['"]kop\/([^'"]+)['"]\)\s*}}/g, (_m, p1) => toBase(`kop/${p1}`))
-  // handle relative src paths for kop/* via BASE_URL
-  .replace(/src=["'](?!https?:\/\/)(\/?)(kop\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
-  // handle relative src paths for Logo/* via BASE_URL (public assets)
-  .replace(/src=["'](?!https?:\/\/)(\/?)(Logo\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
-  // fallback: if masih tersisa {{ /kop/... }} bungkus, hilangkan braces
-  .replace(/{{\s*\/?(kop\/[^}]+)\s*}}/g, (_m, p1) => toBase(p1));
+  // handle relative src paths for kop/* via BASE_URL (allow optional /frontend/)
+  .replace(/src=["'](?!https?:\/\/)(\/?(?:frontend\/)?)(kop\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
+  // handle relative src paths for Logo/* via BASE_URL (public assets, allow optional /frontend/)
+  .replace(/src=["'](?!https?:\/\/)(\/?(?:frontend\/)?)(Logo\/[^"']+)["']/g, (_m, _slash, path) => `src="${toBase(path)}"`)
+  // fallback: if masih tersisa {{ /kop/... }} bungkus, hilangkan braces (allow optional /frontend/)
+  .replace(/{{\s*\/?(?:frontend\/)?(kop\/[^}]+)\s*}}/g, (_m, p1) => toBase(p1))
+  // unwrap brace-wrapped absolute URLs (already correct)
+  .replace(/{{\s*(https?:\/\/[^}\s]+)\s*}}/g, (_m, p1) => p1);
 };
 
 // ==========================================================
@@ -150,6 +162,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
 
  const [loading, setLoading] = useState(true);
  const [saving, setSaving] = useState(false);
+
  const [error, setError] = useState<string | null>(null);
  const [success, setSuccess] = useState<string | null>(null);
  const [isOpen, setIsOpen] = useState(false);
@@ -161,6 +174,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
  const activeEditorRef = useRef<'kop' | 'body' | null>(null);
  const [placeholderMode, setPlaceholderMode] = useState(false);
  const [tableBorderMode, setTableBorderMode] = useState<'border' | 'none'>('border');
+ const [shouldHydrateEditor, setShouldHydrateEditor] = useState(true);
 
  // Form state, inisialisasi dengan defaultKopHtml (yang sudah dinormalisasi + style)
  const [formData, setFormData] = useState({
@@ -343,23 +357,25 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
  ), [applyCommand, applyInlineStyle, insertTable, placeholderMode, insertPlaceholder]);
 
  // MODIFIKASI: Perbaikan No. 2
- // Pastikan DOM diisi ulang saat modal dibuka/tutup, atau data template berubah.
- useEffect(() => {
-  if (isOpen) {
-    // Ketika modal dibuka, isi konten editor dari formData
-    if (kopRef.current) kopRef.current.innerHTML = formData.kop_html;
-    if (bodyRef.current) bodyRef.current.innerHTML = formData.body_html;
-  }
+// Pastikan DOM diisi ulang saat modal dibuka/tutup, atau data template berubah.
+useEffect(() => {
+ if (!isOpen || !shouldHydrateEditor) return;
+ // Isi konten editor dari formData hanya saat perlu (hindari caret reset)
+ if (kopRef.current) kopRef.current.innerHTML = formData.kop_html;
+ if (bodyRef.current) bodyRef.current.innerHTML = formData.body_html;
+ // Tandai sudah di-hydrate
+ setShouldHydrateEditor(false);
+ // Simpan id terakhir untuk referensi (tanpa memaksa re-render konten)
+ if (template && template.id !== lastTemplateIdRef.current) {
+   lastTemplateIdRef.current = template.id ?? null;
+ }
+}, [isOpen, shouldHydrateEditor, formData.kop_html, formData.body_html, template]);
 
-  // Logika reload template saat template ID berubah (hanya terjadi saat fetch/save)
-  if (template && template.id !== lastTemplateIdRef.current) {
-    if (kopRef.current) kopRef.current.innerHTML = formData.kop_html;
-    if (bodyRef.current) bodyRef.current.innerHTML = formData.body_html;
-    lastTemplateIdRef.current = template.id ?? null;
-  }
+// Re-hydrate ketika modal dibuka ulang
+useEffect(() => {
+ if (isOpen) setShouldHydrateEditor(true);
+}, [isOpen]);
 
- }, [isOpen, template, formData.kop_html, formData.body_html]);
- 
  // Fetch template aktif untuk layanan ini
  useEffect(() => {
   const fetchTemplate = async () => {
@@ -396,6 +412,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
     if (!tmpl) {
      setTemplate(null);
      lastTemplateIdRef.current = null; 
+     setShouldHydrateEditor(true);
      setFormData(prev => ({
       ...prev,
       name: '',
@@ -434,6 +451,7 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
      // Gunakan fungsi normalisasi untuk tampilan editor (sudah termasuk style)
      const kopHtml = buildNormalizedKopHtml(parsedHeaders); 
      setTemplate(tmpl);
+     setShouldHydrateEditor(true);
      setFormData({
       name: tmpl.name || '',
       description: tmpl.description || '',
@@ -447,12 +465,14 @@ const LetterTemplateEditor = ({ serviceId }: LetterTemplateEditorProps) => {
     setError('Terjadi kesalahan saat memuat template');
     setTemplate(null);
     lastTemplateIdRef.current = null;
+    setShouldHydrateEditor(true);
     setFormData(prev => ({
       ...prev,
       name: '',
       description: '',
       kop_html: defaultKopHtml,
       body_html: '',
+      status: 'active',
     }));
     setHeaderTexts(defaultHeaderTexts);
    } finally {

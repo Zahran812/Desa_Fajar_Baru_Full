@@ -52,6 +52,16 @@ class LetterController extends Controller
             $letterData ?? []
         );
 
+        // Hilangkan highlight placeholder (span dengan background) agar PDF bersih
+        $stripPlaceholderSpans = static function (string $html) {
+            // Unwrap semua span yang memiliki background/background-color agar warna blok hilang
+            $html = preg_replace('/<span[^>]*style=["\'][^"\']*(?:background-color|background)\s*:[^"\']+["\'][^>]*>(.*?)<\/span>/is', '$1', $html);
+            // Unwrap tag <mark>
+            $html = preg_replace('/<mark[^>]*>(.*?)<\/mark>/is', '$1', $html);
+            // Unwrap span yang hanya membungkus {{ placeholder }}
+            return preg_replace('/<span[^>]*>\s*(\{\{\s*[^}]+\s*\})\s*<\/span>/i', '$1', $html);
+        };
+
         // Normalisasi placeholder tanpa "$" menjadi Blade variable valid
         $normalizePlaceholders = static function (string $html) {
             return preg_replace_callback('/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/', function ($matches) {
@@ -72,11 +82,11 @@ class LetterController extends Controller
         if ($template && ($template->kop_html || $template->body_html)) {
             // Render kop dan isi menggunakan Blade::render (mendukung placeholder)
             $kopRendered = $template->kop_html
-                ? $this->inlineImages(Blade::render($normalizePlaceholders($template->kop_html), $baseData))
+                ? $this->inlineImages(Blade::render($normalizePlaceholders($stripPlaceholderSpans($template->kop_html)), $baseData))
                 : '';
 
             $bodyRendered = $template->body_html
-                ? $this->inlineImages(Blade::render($normalizePlaceholders($template->body_html), $baseData))
+                ? $this->inlineImages(Blade::render($normalizePlaceholders($stripPlaceholderSpans($template->body_html)), $baseData))
                 : '';
 
             // Gabungkan ke dalam layout generik
@@ -156,6 +166,18 @@ class LetterController extends Controller
             $letterData ?? []
         );
 
+        // Hilangkan highlight placeholder (span dengan background biru) agar PDF bersih
+        $stripPlaceholderSpans = static function (string $html) {
+            // Unwrap span yang punya background e0f2fe / rgb(224,242,254) supaya teksnya saja yang tersisa
+            $html = preg_replace(
+                '/<span[^>]*style=["\'][^"\']*background[^"\']*(?:e0f2fe|rgb\s*\(\s*224\s*,\s*242\s*,\s*254\s*\))[^"\']*["\'][^>]*>(.*?)<\/span>/is',
+                '$1',
+                $html
+            );
+            // Unwrap span yang hanya membungkus {{ placeholder }}
+            return preg_replace('/<span[^>]*>\s*(\{\{\s*[^}]+\s*\})\s*<\/span>/i', '$1', $html);
+        };
+
         // Normalisasi placeholder tanpa "$" menjadi Blade variable valid
         $normalizePlaceholders = static function (string $html) {
             return preg_replace_callback('/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/', function ($matches) {
@@ -174,11 +196,11 @@ class LetterController extends Controller
 
         if ($template && ($template->kop_html || $template->body_html)) {
             $kopRendered = $template->kop_html
-                ? $this->inlineImages(Blade::render($normalizePlaceholders($template->kop_html), $baseData))
+                ? $this->inlineImages(Blade::render($normalizePlaceholders($stripPlaceholderSpans($template->kop_html)), $baseData))
                 : '';
 
             $bodyRendered = $template->body_html
-                ? $this->inlineImages(Blade::render($normalizePlaceholders($template->body_html), $baseData))
+                ? $this->inlineImages(Blade::render($normalizePlaceholders($stripPlaceholderSpans($template->body_html)), $baseData))
                 : '';
 
             $html = View::make('letters.generic', [

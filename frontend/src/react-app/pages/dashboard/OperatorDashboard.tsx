@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '@/react-app/lib/api';
 import { useAuth } from '@/react-app/contexts/AuthContext';
 import DashboardLayout from '@/react-app/components/DashboardLayout';
@@ -10,7 +10,6 @@ import PPIDEditor from '@/react-app/components/dashboard/PPIDEditor';
 import TransparencyEditor from '@/react-app/components/dashboard/TransparencyEditor';
 import Kelolapenduduk from '@/react-app/components/dashboard/penduduk/Kelolapenduduk';
 import Administrasi from '@/react-app/components/dashboard/Layanan/Administrasi';
-import { mockTransparencyData, mockVillagePrograms } from '@/react-app/data/mockInformationData';
 import {
   Users, UserPlus, Settings, Home, Shield,
   Clock, CheckCircle, XCircle, Plus, Edit3, Trash2,
@@ -27,16 +26,15 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Link } from 'react-router-dom';
 import {
-  forceSeed,
-  getByCategoryFor,
-  getReceivedFor,
-  addReply,
-  updateStatus,
-  markRead,
-  type AppMessage,
-  type MessageCategory,
-  type MessageStatus,
-} from '@/react-app/lib/messageStore';
+  fetchChatCategories,
+  fetchChatMessages,
+  fetchChatThreads,
+  markChatRead,
+  sendChatMessage,
+  type ChatCategory,
+  type ChatMessage,
+  type ChatThread,
+} from '@/react-app/lib/chatApi';
 
 interface User {
   id: number;
@@ -68,7 +66,12 @@ interface User {
   occupation?: string;
 }
 
-interface Request {
+interface RequestDocument {
+  id: number;
+  required_name?: string;
+}
+
+ interface Request {
   id: number;
   user_id: number;
   service_id: number;
@@ -76,7 +79,7 @@ interface Request {
   subject: string;
   description: string;
   status: string;
-  documents?: any[];
+  documents?: RequestDocument[];
   response?: string;
   created_at: string;
   updated_at: string;
@@ -188,12 +191,15 @@ interface Category {
 }
 
 interface Dusun {
-  id: string;
+  id: number;
   name: string;
-  head_name: string;
+  head_name?: string;
   head_phone?: string;
   rt_count: number;
+  kk_count?: number;
   population_count: number;
+  male_count?: number;
+  female_count?: number;
 }
 
 interface Service {
@@ -260,6 +266,31 @@ interface CitizenData {
   created_at?: string;
 }
 
+interface ResidentApi {
+  id: number;
+  nik: string;
+  nama_lengkap: string;
+  jenis_kelamin?: string;
+  tempat_lahir?: string;
+  tanggal_lahir?: string;
+  umur?: number;
+  agama?: string;
+  status_perkawinan?: string;
+  pekerjaan?: string;
+  alamat?: string;
+  rt?: string;
+  rw?: string;
+  no_kk?: string;
+  status_dalam_keluarga?: string;
+  status_hubungan_dalam_keluarga?: string;
+  pendidikan_terakhir?: string;
+  nama_ibu?: string;
+  nama_ayah?: string;
+  golongan_darah?: string;
+  phone?: string;
+  dusun?: { id: number; name: string };
+}
+
 const OperatorDashboard = () => {
   const { user, logout, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -269,7 +300,6 @@ const OperatorDashboard = () => {
   const [programSubTab, setProgramSubTab] = useState('ekonomi');
   const [servicesSubTab, setServicesSubTab] = useState('administration');
   const [selectedDusun, setSelectedDusun] = useState<string>('');
-  const [selectedRT, setSelectedRT] = useState<string>('');
   
   const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -279,13 +309,16 @@ const OperatorDashboard = () => {
   const [dusunHeads, setDusunHeads] = useState<User[]>([]);
   const [citizens, setCitizens] = useState<User[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
-  const [messages, setMessages] = useState<AppMessage[]>([]);
+  const [chatCategories, setChatCategories] = useState<ChatCategory[]>([]);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [populationData, setPopulationData] = useState<PopulationData[]>([]);
+  const [dusuns, setDusuns] = useState<Dusun[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
-  const [transparencyData, setTransparencyData] = useState<TransparencyData[]>(mockTransparencyData);
-  const [villagePrograms, setVillagePrograms] = useState<VillageProgram[]>(mockVillagePrograms);
+  const [transparencyData, setTransparencyData] = useState<TransparencyData[]>([]);
+  const [villagePrograms, setVillagePrograms] = useState<VillageProgram[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [ppidServices, setPpidServices] = useState<PPIDService[]>([]);
@@ -299,10 +332,9 @@ const OperatorDashboard = () => {
   // Pagination states (currently not used - can be re-enabled when needed)
 
   // Messages UI state
-  const [messageCategory, setMessageCategory] = useState<MessageCategory | 'all'>('all');
-  const [selectedMessage, setSelectedMessage] = useState<AppMessage | null>(null);
+  const [messageCategory, setMessageCategory] = useState<number | 'all'>('all');
+  const [selectedThread, setSelectedThread] = useState<ChatThread | null>(null);
   const [replyText, setReplyText] = useState('');
-  const [newStatus, setNewStatus] = useState<MessageStatus>('dibaca');
   
   // Modal states
   const [showCreateDusunHead, setShowCreateDusunHead] = useState(false);
@@ -328,7 +360,7 @@ const OperatorDashboard = () => {
   const [selectAll, setSelectAll] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<CitizenData[]>([]);
-  const [importTargetDusun, setImportTargetDusun] = useState<string>('');
+  const [importTargetDusun, setImportTargetDusun] = useState<number | null>(null);
   const [importDusunDropdownOpen, setImportDusunDropdownOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
   
@@ -375,7 +407,7 @@ const OperatorDashboard = () => {
     action?: {
       tab: string;
       subTab?: string;
-      data?: any;
+      data?: unknown;
     };
   }>>([]);
   
@@ -424,6 +456,83 @@ const OperatorDashboard = () => {
     rw_number: '',
     dusun: ''
   });
+
+  const handleSaveEditDusun = async () => {
+    if (!editingDusun) return;
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/dusuns/${editingDusun.id}`, {
+        method: 'PUT',
+        headers: tokenHeaders(),
+        body: JSON.stringify({
+          name: editDusunForm.name,
+          head_name: editDusunForm.head_name,
+          head_phone: editDusunForm.head_phone,
+          rt_count: editDusunForm.rt_count,
+          population_count: editDusunForm.population_count,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Gagal memperbarui dusun');
+      }
+
+      setDusuns((prev) =>
+        prev.map((d) =>
+          d.id === editingDusun.id
+            ? {
+                ...d,
+                name: editDusunForm.name,
+                head_name: editDusunForm.head_name,
+                head_phone: editDusunForm.head_phone,
+                rt_count: editDusunForm.rt_count,
+                population_count: editDusunForm.population_count,
+              }
+            : d,
+        ),
+      );
+      setShowEditDusun(false);
+      setEditingDusun(null);
+      alert('Data dusun berhasil diperbarui');
+    } catch (err) {
+      console.error('Failed to update dusun', err);
+      alert('Gagal memperbarui dusun');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveEditRT = async () => {
+    if (!editingRT) return;
+    setSubmitting(true);
+    try {
+      const res = await apiFetch(`/rts/${editingRT.id}`, {
+        method: 'PUT',
+        headers: tokenHeaders(),
+        body: JSON.stringify({
+          name: editRTForm.name,
+          ketua: editRTForm.ketua,
+          phone: editRTForm.phone,
+          kk_count: editRTForm.kk_count,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Gagal memperbarui RT');
+      }
+
+      alert('Data RT berhasil diperbarui');
+      setShowEditRT(false);
+      setEditingRT(null);
+    } catch (err) {
+      console.error('Failed to update RT', err);
+      alert('Gagal memperbarui RT');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const fetchCategories = async () => {
     try {
@@ -587,7 +696,7 @@ const OperatorDashboard = () => {
       const items = Array.isArray(data.galleries) ? data.galleries : [];
 
       // Validasi item seperti sebelumnya
-      const validItems = items.filter((item: any) =>
+      const validItems = items.filter((item: unknown) =>
         item &&
         typeof item === 'object' &&
         'id' in item &&
@@ -646,12 +755,10 @@ const OperatorDashboard = () => {
     setSearchTerm('');
   }, [subTab]);
 
-  // Seed demo messages and fetch
+  // Load data
   useEffect(() => {
     const fetchAllData = async () => {
       if (!user) return;
-      // Always seed for demo - show real message examples
-      forceSeed(user.id);
       
       try {
         // Load demo data for simulation
@@ -691,8 +798,17 @@ const OperatorDashboard = () => {
         //   setRequests(data.requests || []);
         // }
 
-        // Load messages from local store (demo)
-        setMessages(getReceivedFor(user.id));
+        // Load chat (real)
+        try {
+          const [cats, threadsRes] = await Promise.all([
+            fetchChatCategories(token || ''),
+            fetchChatThreads(token || ''),
+          ]);
+          setChatCategories(cats);
+          setChatThreads(threadsRes.data);
+        } catch (e) {
+          console.error('Failed to load chat', e);
+        }
 
         // Fetch population data
         const populationResponse = await apiFetch('/population', {
@@ -875,13 +991,14 @@ const OperatorDashboard = () => {
     }> = [];
 
     // Notifications for unread messages
-    const unreadMessages = messages.filter(m => !m.is_read);
-    if (unreadMessages.length > 0) {
+    const unreadThreadCount = chatThreads.filter(t => (t.unread_count || 0) > 0).length;
+    const unreadMsgCount = chatThreads.reduce((acc, t) => acc + (t.unread_count || 0), 0);
+    if (unreadMsgCount > 0) {
       generatedNotifications.push({
-        id: `msg-${unreadMessages.length}`,
+        id: `msg-${unreadMsgCount}`,
         type: 'message',
-        title: `${unreadMessages.length} Pesan Baru`,
-        message: `Anda memiliki ${unreadMessages.length} pesan belum dibaca dari masyarakat`,
+        title: `${unreadMsgCount} Pesan Baru`,
+        message: `Anda memiliki ${unreadThreadCount} percakapan dengan pesan belum dibaca`,
         time: 'Baru saja',
         unread: true,
         action: {
@@ -950,9 +1067,9 @@ const OperatorDashboard = () => {
     });
 
     setNotifications(generatedNotifications);
-  }, [user, messages, pendingUsers, requests, populationData]);
+  }, [user, chatThreads, pendingUsers, requests, populationData]);
 
-  const pendingCount = pendingUsers.length + requests.filter(r => r.status === 'pending').length + populationData.filter(p => p.status === 'pending').length + messages.filter(m => !m.is_read).length;
+  const pendingCount = pendingUsers.length + requests.filter(r => r.status === 'pending').length + populationData.filter(p => p.status === 'pending').length + chatThreads.reduce((acc, t) => acc + (t.unread_count || 0), 0);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
@@ -967,71 +1084,11 @@ const OperatorDashboard = () => {
     { id: 'information', label: 'Kelola Informasi', icon: Info },
     { id: 'transparency', label: 'Kelola Transparansi', icon: DollarSign },
     { id: 'programs', label: 'Kelola Program', icon: Briefcase },
-    { id: 'messages', label: 'Pesan', icon: Mail, badge: messages.filter(m => !m.is_read).length },
+    { id: 'messages', label: 'Pesan', icon: Mail, badge: chatThreads.reduce((acc, t) => acc + (t.unread_count || 0), 0) },
     { id: 'website', label: 'Kelola Website', icon: Globe }
   ];
 
-  // Daftar dusun sesuai struktur administrasi desa
-  const dusuns: Dusun[] = [
-    {
-      id: 'dusun-1',
-      name: 'Dusun I',
-      head_name: '',
-      head_phone: '',
-      rt_count: 386,
-      population_count: 1231,
-    },
-    {
-      id: 'dusun-2',
-      name: 'Dusun II A',
-      head_name: '',
-      head_phone: '',
-      rt_count: 429,
-      population_count: 1418,
-    },
-    {
-      id: 'dusun-3',
-      name: 'Dusun II B',
-      head_name: '',
-      head_phone: '',
-      rt_count: 456,
-      population_count: 1905,
-    },
-    {
-      id: 'dusun-4',
-      name: 'Dusun III A',
-      head_name: '',
-      head_phone: '',
-      rt_count: 607,
-      population_count: 2434,
-    },
-    {
-      id: 'dusun-5',
-      name: 'Dusun III B',
-      head_name: '',
-      head_phone: '',
-      rt_count: 616,
-      population_count: 2260,
-    },
-    {
-      id: 'dusun-6',
-      name: 'Dusun IV',
-      head_name: '',
-      head_phone: '',
-      rt_count: 377,
-      population_count: 1027,
-    },
-    {
-      id: 'dusun-7',
-      name: 'Dusun V',
-      head_name: '',
-      head_phone: '',
-      rt_count: 365,
-      population_count: 1297,
-    },
-  ];
-
-  const importTargetDusunOptions = dusuns.map((d) => d.name);
+  const importTargetDusunOptions = dusuns.map((d) => ({ id: d.id, name: d.name }));
 
   const importValidCount = importPreview.filter((row) => {
     const nik = String(row.nik || '').trim();
@@ -1042,9 +1099,77 @@ const OperatorDashboard = () => {
 
   // citizensData will be filled from Excel import / API; no mock data
 
-  useEffect(() => {
-    setCitizensData([]);
+  const tokenHeaders = useCallback(() => {
+    const token = localStorage.getItem("auth_token");
+    return {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    };
   }, []);
+
+  const fetchDusuns = useCallback(async () => {
+    try {
+      const res = await apiFetch('/dusuns', { headers: tokenHeaders() });
+      if (!res.ok) throw new Error(await res.text());
+      const data: Dusun[] = await res.json();
+      setDusuns(data);
+    } catch (err) {
+      console.error('Failed to fetch dusuns', err);
+      setDusuns([]);
+    }
+  }, [tokenHeaders]);
+
+  const fetchResidents = useCallback(async (params?: { dusun_id?: string | number }) => {
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.dusun_id) searchParams.set('dusun_id', String(params.dusun_id));
+      searchParams.set('per_page', '500');
+      const res = await apiFetch(`/residents?${searchParams.toString()}`, { headers: tokenHeaders() });
+      if (!res.ok) throw new Error(await res.text());
+      const payload = await res.json();
+      const list: ResidentApi[] = Array.isArray(payload) ? payload : payload.data || [];
+      const mapped: CitizenData[] = list.map((r: ResidentApi) => ({
+        id: r.id,
+        nik: r.nik,
+        nama_lengkap: r.nama_lengkap,
+        jenis_kelamin: r.jenis_kelamin || '',
+        tempat_lahir: r.tempat_lahir || '',
+        tanggal_lahir: r.tanggal_lahir || '',
+        umur: r.umur ?? undefined,
+        agama: r.agama || '',
+        status_perkawinan: r.status_perkawinan || '',
+        pekerjaan: r.pekerjaan || '',
+        alamat: r.alamat || '',
+        rt: r.rt || '',
+        rw: r.rw || '',
+        dusun: r.dusun?.name || '',
+        no_kk: r.no_kk || '',
+        status_dalam_keluarga: r.status_dalam_keluarga || r.status_hubungan_dalam_keluarga || '',
+        pendidikan_terakhir: r.pendidikan_terakhir || '',
+        nama_ibu: r.nama_ibu || '',
+        nama_ayah: r.nama_ayah || '',
+        golongan_darah: r.golongan_darah || '',
+        status_hubungan_dalam_keluarga: r.status_hubungan_dalam_keluarga || '',
+        no_telepon: r.phone || '',
+      }));
+      setCitizensData(mapped);
+    } catch (err) {
+      console.error('Failed to fetch residents', err);
+      setCitizensData([]);
+    }
+  }, [tokenHeaders]);
+
+  useEffect(() => {
+    fetchDusuns();
+    fetchResidents();
+  }, [fetchDusuns, fetchResidents]);
+
+  useEffect(() => {
+    if (activeTab === 'population') {
+      const dusunId = selectedDusun ? Number(selectedDusun) : undefined;
+      fetchResidents(dusunId ? { dusun_id: dusunId } : undefined);
+    }
+  }, [activeTab, selectedDusun, fetchResidents]);
 
 
 
@@ -1053,227 +1178,211 @@ const OperatorDashboard = () => {
   // Import/Export Functions
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setImportFile(file);
-      // Preview file
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const bstr = evt.target?.result;
-          const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
-          const wsname = wb.SheetNames[0];
-          const ws = wb.Sheets[wsname];
+    if (!file) return;
 
-          setImportTargetDusun('');
-          
-          console.log('=== DEBUGGING EXCEL IMPORT ===');
-          console.log('Sheet Name:', wsname);
-          console.log('Sheet Range:', ws['!ref']);
-          
-          // Coba baca semua data termasuk header untuk analisis
-          const rawData = XLSX.utils.sheet_to_json<any>(ws, { 
-            header: 1, // Baca sebagai array, bukan object
-            defval: '',
-            raw: false,
-            blankrows: false // Skip baris kosong
+    setImportFile(file);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+
+        setImportTargetDusun(null);
+
+        const rawData = XLSX.utils.sheet_to_json<any>(ws, {
+          header: 1,
+          defval: '',
+          raw: false,
+          blankrows: false,
+        });
+
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(10, rawData.length); i++) {
+          const row = rawData[i];
+          if (Array.isArray(row)) {
+            const rowStr = row.join('|').toLowerCase();
+            if (rowStr.includes('nik') || rowStr.includes('nama')) {
+              headerRowIndex = i;
+              break;
+            }
+          }
+        }
+
+        const dataRows = XLSX.utils.sheet_to_json<any>(ws, {
+          range: headerRowIndex,
+          defval: '',
+          raw: false,
+          dateNF: 'DD-MM-YYYY',
+          blankrows: false,
+        });
+
+        const detectDusunName = (source: string) => {
+          const s = (source || '').toLowerCase();
+          if (s.includes('dusun') && /dusun\s*1/.test(s)) return 'Dusun I';
+          if (s.includes('dusun') && /dusun\s*2\s*a/.test(s)) return 'Dusun II A';
+          if (s.includes('dusun') && /dusun\s*2\s*b/.test(s)) return 'Dusun II B';
+          if (s.includes('dusun') && /dusun\s*3\s*a/.test(s)) return 'Dusun III A';
+          if (s.includes('dusun') && /dusun\s*3\s*b/.test(s)) return 'Dusun III B';
+          if (s.includes('dusun') && /dusun\s*4/.test(s)) return 'Dusun IV';
+          if (s.includes('dusun') && /dusun\s*5/.test(s)) return 'Dusun V';
+          return '';
+        };
+
+        const detectedDusun = detectDusunName(wsname) || detectDusunName(file.name);
+        const normalizedData = dataRows.map((row) => {
+          const normalizedRow: Record<string, string> = {};
+          Object.keys(row).forEach((key) => {
+            const normKey = key.toLowerCase().trim().replace(/[\s_.-]+/g, '');
+            normalizedRow[normKey] = row[key];
           });
-          
-          console.log('Total Raw Rows:', rawData.length);
-          console.log('First 5 rows (raw):', rawData.slice(0, 5));
-          
-          // Cari baris header (baris yang memiliki "NIK" atau "Nama")
-          let headerRowIndex = 0;
-          for (let i = 0; i < Math.min(10, rawData.length); i++) {
-            const row = rawData[i];
-            if (Array.isArray(row)) {
-              const rowStr = row.join('|').toLowerCase();
-              if (rowStr.includes('nik') || rowStr.includes('nama')) {
-                headerRowIndex = i;
-                console.log('Header found at row:', i + 1, 'Content:', row);
-                break;
+          return { row, normalizedRow };
+        });
+
+        const getValFactory = (rowObj: { row: any; normalizedRow: Record<string, string> }) => {
+          const { row, normalizedRow } = rowObj;
+          return (...keys: string[]) => {
+            for (const key of keys) {
+              if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
+                return String(row[key]).trim();
+              }
+            }
+            for (const key of keys) {
+              const normKey = key.toLowerCase().trim().replace(/[\s_.-]+/g, '');
+              if (normalizedRow[normKey] !== undefined && normalizedRow[normKey] !== null && normalizedRow[normKey] !== '') {
+                return String(normalizedRow[normKey]).trim();
+              }
+            }
+            return '';
+          };
+        };
+
+        const pad2 = (n: number) => String(n).padStart(2, '0');
+        const formatDateObj = (d: Date) => `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())}/${d.getUTCFullYear()}`;
+        const formatBirthDate = (value: string) => {
+          if (!value) return '';
+          if (!isNaN(Number(value))) {
+            const parsed = XLSX.SSF.parse_date_code(Number(value));
+            if (parsed) {
+              const dateObj = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+              if (!isNaN(dateObj.getTime())) return formatDateObj(dateObj);
+            }
+          }
+          const cleaned = value.trim();
+          const dateFromStr = new Date(cleaned);
+          if (!isNaN(dateFromStr.getTime())) {
+            return formatDateObj(
+              new Date(Date.UTC(dateFromStr.getUTCFullYear(), dateFromStr.getUTCMonth(), dateFromStr.getUTCDate())),
+            );
+          }
+          const splitters = ['-', '/'];
+          for (const s of splitters) {
+            if (cleaned.includes(s)) {
+              const parts = cleaned.split(s).map((p) => p.trim());
+              if (parts.length === 3) {
+                const [a, b, c] = parts;
+                const year = c.length === 2 ? Number(`20${c}`) - (Number(c) > 30 ? 100 : 0) : Number(c);
+                const month = Number(a) > 12 ? Number(b) : Number(a);
+                const day = Number(a) > 12 ? Number(a) : Number(b);
+                const dateObj = new Date(Date.UTC(year, month - 1, day));
+                if (!isNaN(dateObj.getTime())) return formatDateObj(dateObj);
               }
             }
           }
-          
-          // Baca ulang dengan header yang benar
-          const data = XLSX.utils.sheet_to_json<any>(ws, { 
-            range: headerRowIndex, // Mulai dari baris header
-            defval: '',
-            raw: false,
-            dateNF: 'DD-MM-YYYY',
-            blankrows: false
-          });
-          
-          console.log('Total Data Rows (after header):', data.length);
-          console.log('Parsed Data (first 3 rows):', data.slice(0, 3));
-          if (data.length > 0) {
-            console.log('Detected Columns:', Object.keys(data[0]));
-          }
+          return cleaned;
+        };
 
-          const detectDusunName = (source: string) => {
-            const s = (source || '').toLowerCase();
-            if (s.includes('dusun') && /dusun\s*1/.test(s)) return 'Dusun I';
-            if (s.includes('dusun') && /dusun\s*2\s*a/.test(s)) return 'Dusun II A';
-            if (s.includes('dusun') && /dusun\s*2\s*b/.test(s)) return 'Dusun II B';
-            if (s.includes('dusun') && /dusun\s*3\s*a/.test(s)) return 'Dusun III A';
-            if (s.includes('dusun') && /dusun\s*3\s*b/.test(s)) return 'Dusun III B';
-            if (s.includes('dusun') && /dusun\s*4/.test(s)) return 'Dusun IV';
-            if (s.includes('dusun') && /dusun\s*5/.test(s)) return 'Dusun V';
-            return '';
+        const mappedData: CitizenData[] = normalizedData.map(({ row, normalizedRow }, index) => {
+          const getVal = getValFactory({ row, normalizedRow });
+          const rawTanggalLahir = getVal(
+            'Tanggal Lahir',
+            'TANGGAL LAHIR',
+            'tanggal_lahir',
+            'TGL LAHIR',
+            'Tgl Lahir',
+            'TGL. LAHIR',
+            'Tanggal Lahir',
+            'TANGGAL LAHIR',
+            'Tgl. Lahir',
+            'TGL. LAHIR',
+            'TTL',
+          );
+          const tanggalLahir = formatBirthDate(rawTanggalLahir);
+          const umurRaw = getVal('Umur', 'UMUR', 'Usia', 'USIA');
+          const umurParsed = Number.parseInt(String(umurRaw || '').trim(), 10);
+          const umurValue = !Number.isNaN(umurParsed) ? umurParsed : undefined;
+
+          return {
+            id: citizensData.length + index + 1,
+            no: index + 1,
+            nik: getVal('NIK', 'nik', 'No. NIK', 'NO NIK', 'NOMOR NIK', 'NO. NIK', 'No NIK', 'Nomor NIK', 'nomor nik'),
+            nama_lengkap: getVal('Nama Lengkap', 'NAMA LENGKAP', 'nama_lengkap', 'NAMA', 'Nama', 'nama', 'Nama Lengkap', 'NAMA LENGKAP'),
+            jenis_kelamin: getVal('Jenis Kelamin', 'JENIS KELAMIN', 'jenis_kelamin', 'JK', 'L/P', 'Kelamin', 'KELAMIN', 'Sex', 'Gender'),
+            tempat_lahir: getVal('Tempat Lahir', 'TEMPAT LAHIR', 'tempat_lahir', 'Tmp Lahir', 'TMP LAHIR', 'Tmpt Lahir', 'TMPT LAHIR'),
+            tanggal_lahir: tanggalLahir,
+            umur: umurValue,
+            agama: getVal('Agama', 'AGAMA', 'agama', 'Agm', 'AGM'),
+            status_perkawinan: getVal('Status Perkawinan', 'STATUS PERKAWINAN', 'status_perkawinan', 'STATUS KAWIN', 'Kawin', 'KAWIN', 'Status Kawin', 'STATUS KAWIN'),
+            pekerjaan: getVal('Jenis Pekerjaan', 'JENIS PEKERJAAN', 'Pekerjaan', 'PEKERJAAN', 'pekerjaan', 'Pkj', 'PKJ', 'Kerja', 'KERJA'),
+            kewarganegaraan: getVal('Kewarganegaraan', 'KEWARGANEGARAAN', 'kewarganegaraan', 'WNI/WNA', 'Warga Negara', 'WARGA NEGARA'),
+            alamat: getVal('Alamat', 'ALAMAT', 'alamat', 'Almt', 'ALMT', 'Alamat Lengkap', 'ALAMAT LENGKAP'),
+            rt: getVal('RT', 'rt', 'R.T', 'R T', 'R.T.', 'No RT', 'NO RT'),
+            rw: getVal('RW', 'rw', 'R.W', 'R W', 'R.W.', 'No RW', 'NO RW'),
+            dusun: detectedDusun || getVal('Dusun', 'DUSUN', 'dusun', 'Dsn', 'DSN', 'Nama Dusun', 'NAMA DUSUN'),
+            kelurahan: getVal('Kelurahan', 'KELURAHAN', 'kelurahan', 'Kel', 'KEL', 'Desa', 'DESA', 'Nama Desa', 'NAMA DESA'),
+            kecamatan: getVal('Kecamatan', 'KECAMATAN', 'kecamatan', 'Kec', 'KEC', 'Nama Kecamatan', 'NAMA KECAMATAN'),
+            no_kk: getVal('No KK', 'NO KK', 'no_kk', 'NO. KK', 'NOMOR KK', 'Nomor KK', 'No. KK', 'KK', 'Nomor Kartu Keluarga', 'NOMOR KARTU KELUARGA'),
+            nama_kepala_keluarga: getVal('Nama Kepala Keluarga', 'NAMA KEPALA KELUARGA', 'nama_kepala_keluarga', 'NAMA KK', 'Nama KK', 'Kepala Keluarga', 'KEPALA KELUARGA', 'KK'),
+            status_dalam_keluarga: getVal('Status Hubungan Dalam Keluarga', 'STATUS HUBUNGAN DALAM KELUARGA', 'Status Dalam Keluarga', 'STATUS DALAM KELUARGA', 'status_dalam_keluarga', 'STATUS KELUARGA', 'Status Keluarga', 'Shdk', 'SHDK'),
+            pendidikan_terakhir: getVal('Pendidikan Terakhir', 'PENDIDIKAN TERAKHIR', 'pendidikan_terakhir', 'PENDIDIKAN', 'Pendidikan', 'Pend', 'PEND', 'Pddk', 'PDDK'),
+            nama_ibu: getVal('Nama Ibu', 'NAMA IBU', 'nama_ibu', 'IBU', 'Ibu', 'Nama Ibu Kandung', 'NAMA IBU KANDUNG'),
+            nama_ayah: getVal('Nama Ayah', 'NAMA AYAH', 'nama_ayah', 'AYAH', 'Ayah', 'Nama Ayah Kandung', 'NAMA AYAH KANDUNG'),
+            golongan_darah: getVal('Golongan Darah', 'GOLONGAN DARAH', 'golongan_darah', 'GOL DARAH', 'GOL. DARAH', 'Gol Darah', 'Gol. Darah', 'Darah', 'DARAH'),
+            status_perkawinan_dalam_kk: getVal('Status Perkawinan Dalam KK', 'status_perkawinan_dalam_kk', 'Status Kawin KK', 'STATUS KAWIN KK'),
+            tanggal_perkawinan: getVal('Tanggal Perkawinan', 'TANGGAL PERKAWINAN', 'tanggal_perkawinan', 'Tgl Kawin', 'TGL KAWIN', 'Tanggal Kawin', 'TANGGAL KAWIN'),
+            kelainan_fisik_mental: getVal('Kelainan Fisik Mental', 'KELAINAN FISIK MENTAL', 'kelainan_fisik_mental', 'KELAINAN', 'Kelainan', 'Cacat', 'CACAT'),
+            no_telepon: getVal('No Telepon', 'NO TELEPON', 'no_telepon', 'NO. TELEPON', 'TELEPON', 'HP', 'No HP', 'NO HP', 'Handphone', 'HANDPHONE', 'No. HP', 'NO. HP'),
+            no_paspor: getVal('No Paspor', 'NO PASPOR', 'no_paspor', 'Nomor Paspor', 'NOMOR PASPOR', 'Paspor', 'PASPOR'),
+            no_akta_lahir: getVal('No Akta Lahir', 'NO AKTA LAHIR', 'no_akta_lahir', 'Nomor Akta Lahir', 'NOMOR AKTA LAHIR', 'Akta Lahir', 'AKTA LAHIR'),
+            no_akta_kawin: getVal('No Akta Kawin', 'NO AKTA KAWIN', 'no_akta_kawin', 'Nomor Akta Kawin', 'NOMOR AKTA KAWIN', 'Akta Kawin', 'AKTA KAWIN'),
+            created_at: new Date().toISOString().split('T')[0],
           };
+        });
 
-          const detectedDusun = detectDusunName(wsname) || detectDusunName(file.name);
+        const validData = mappedData.filter((row) => {
+          const hasNIK = row.nik && row.nik.trim() !== '';
+          const hasName = row.nama_lengkap && row.nama_lengkap.trim() !== '';
+          return hasNIK && hasName;
+        });
 
-          setImportTargetDusun(detectedDusun);
-          
-          // Map Excel columns to CitizenData dengan semua field
-          const mappedData: CitizenData[] = data.map((row: any, index: number) => {
-            // Normalize column names untuk matching yang lebih fleksibel
-            const normalizedRow: any = {};
-            Object.keys(row).forEach(key => {
-              const normalizedKey = key.toLowerCase().trim().replace(/[\s_.-]+/g, '');
-              normalizedRow[normalizedKey] = row[key];
-            });
-            
-            // Helper function untuk mendapatkan nilai dari berbagai kemungkinan nama kolom
-            const getVal = (...keys: string[]) => {
-              // Coba dengan nama asli dulu
-              for (const key of keys) {
-                if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
-                  return String(row[key]).trim();
-                }
-              }
-              // Coba dengan normalized keys
-              for (const key of keys) {
-                const normalizedKey = key.toLowerCase().trim().replace(/[\s_.-]+/g, '');
-                if (normalizedRow[normalizedKey] !== undefined && normalizedRow[normalizedKey] !== null && normalizedRow[normalizedKey] !== '') {
-                  return String(normalizedRow[normalizedKey]).trim();
-                }
-              }
-              return '';
-            };
+        const matchedDusun = importTargetDusunOptions.find((d) => d.name === detectedDusun);
+        setImportTargetDusun(matchedDusun?.id ?? null);
+        setImportPreview(mappedData);
 
-            // Format tanggal lahir ke MM/DD/YYYY (leading zero, 4 digit tahun)
-            const pad2 = (n: number) => String(n).padStart(2, '0');
-            const formatDateObj = (d: Date) =>
-              `${pad2(d.getUTCMonth() + 1)}/${pad2(d.getUTCDate())}/${d.getUTCFullYear()}`;
-            const formatBirthDate = (value: string) => {
-              if (!value) return '';
-              // Jika numeric (serial Excel), convert via Date
-              if (!isNaN(Number(value))) {
-                const parsed = XLSX.SSF.parse_date_code(Number(value));
-                if (parsed) {
-                  const dateObj = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
-                  if (!isNaN(dateObj.getTime())) return formatDateObj(dateObj);
-                }
-              }
-              // Normal string
-              const cleaned = value.trim();
-              const dateFromStr = new Date(cleaned);
-              if (!isNaN(dateFromStr.getTime())) {
-                return formatDateObj(new Date(Date.UTC(
-                  dateFromStr.getUTCFullYear(),
-                  dateFromStr.getUTCMonth(),
-                  dateFromStr.getUTCDate()
-                )));
-              }
-              // Try manual split
-              const splitters = ['-', '/'];
-              for (const s of splitters) {
-                if (cleaned.includes(s)) {
-                  const parts = cleaned.split(s).map(p => p.trim());
-                  if (parts.length === 3) {
-                    const [a, b, c] = parts;
-                    const year = c.length === 2 ? Number(`20${c}`) - (Number(c) > 30 ? 100 : 0) : Number(c);
-                    const month = Number(a) > 12 ? Number(b) : Number(a); // fallback
-                    const day = Number(a) > 12 ? Number(a) : Number(b);
-                    if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-                      const dateObj = new Date(Date.UTC(year, month - 1, day));
-                      if (!isNaN(dateObj.getTime())) return formatDateObj(dateObj);
-                    }
-                  }
-                }
-              }
-              return cleaned;
-            };
-
-            const rawTanggalLahir = getVal('Tanggal Lahir', 'TANGGAL LAHIR', 'tanggal_lahir', 'TGL LAHIR', 'Tgl Lahir', 'TGL. LAHIR', 'Tanggal Lahir', 'TANGGAL LAHIR', 'Tgl. Lahir', 'TGL. LAHIR', 'TTL');
-            const tanggalLahir = formatBirthDate(rawTanggalLahir);
-
-            const umurRaw = getVal('Umur', 'UMUR', 'Usia', 'USIA');
-            const umurParsed = Number.parseInt(String(umurRaw || '').trim(), 10);
-            const umurValue = !Number.isNaN(umurParsed) ? umurParsed : undefined;
-
-            return {
-              id: citizensData.length + index + 1,
-              no: index + 1,
-              nik: getVal('NIK', 'nik', 'No. NIK', 'NO NIK', 'NOMOR NIK', 'NO. NIK', 'No NIK', 'Nomor NIK', 'nomor nik'),
-              nama_lengkap: getVal('Nama Lengkap', 'NAMA LENGKAP', 'nama_lengkap', 'NAMA', 'Nama', 'nama', 'Nama Lengkap', 'NAMA LENGKAP'),
-              jenis_kelamin: getVal('Jenis Kelamin', 'JENIS KELAMIN', 'jenis_kelamin', 'JK', 'L/P', 'Kelamin', 'KELAMIN', 'Sex', 'Gender'),
-              tempat_lahir: getVal('Tempat Lahir', 'TEMPAT LAHIR', 'tempat_lahir', 'Tmp Lahir', 'TMP LAHIR', 'Tmpt Lahir', 'TMPT LAHIR'),
-              tanggal_lahir: tanggalLahir,
-              umur: umurValue,
-              agama: getVal('Agama', 'AGAMA', 'agama', 'Agm', 'AGM'),
-              status_perkawinan: getVal('Status Perkawinan', 'STATUS PERKAWINAN', 'status_perkawinan', 'STATUS KAWIN', 'Kawin', 'KAWIN', 'Status Kawin', 'STATUS KAWIN'),
-              pekerjaan: getVal('Jenis Pekerjaan', 'JENIS PEKERJAAN', 'Pekerjaan', 'PEKERJAAN', 'pekerjaan', 'Pkj', 'PKJ', 'Kerja', 'KERJA'),
-              kewarganegaraan: getVal('Kewarganegaraan', 'KEWARGANEGARAAN', 'kewarganegaraan', 'WNI/WNA', 'Warga Negara', 'WARGA NEGARA'),
-              alamat: getVal('Alamat', 'ALAMAT', 'alamat', 'Almt', 'ALMT', 'Alamat Lengkap', 'ALAMAT LENGKAP'),
-              rt: getVal('RT', 'rt', 'R.T', 'R T', 'R.T.', 'No RT', 'NO RT'),
-              rw: getVal('RW', 'rw', 'R.W', 'R W', 'R.W.', 'No RW', 'NO RW'),
-              dusun: detectedDusun || getVal('Dusun', 'DUSUN', 'dusun', 'Dsn', 'DSN', 'Nama Dusun', 'NAMA DUSUN'),
-              kelurahan: getVal('Kelurahan', 'KELURAHAN', 'kelurahan', 'Kel', 'KEL', 'Desa', 'DESA', 'Nama Desa', 'NAMA DESA'),
-              kecamatan: getVal('Kecamatan', 'KECAMATAN', 'kecamatan', 'Kec', 'KEC', 'Nama Kecamatan', 'NAMA KECAMATAN'),
-              no_kk: getVal('No KK', 'NO KK', 'no_kk', 'NO. KK', 'NOMOR KK', 'Nomor KK', 'No. KK', 'KK', 'Nomor Kartu Keluarga', 'NOMOR KARTU KELUARGA'),
-              nama_kepala_keluarga: getVal('Nama Kepala Keluarga', 'NAMA KEPALA KELUARGA', 'nama_kepala_keluarga', 'NAMA KK', 'Nama KK', 'Kepala Keluarga', 'KEPALA KELUARGA', 'KK'),
-              status_dalam_keluarga: getVal('Status Hubungan Dalam Keluarga', 'STATUS HUBUNGAN DALAM KELUARGA', 'Status Dalam Keluarga', 'STATUS DALAM KELUARGA', 'status_dalam_keluarga', 'STATUS KELUARGA', 'Status Keluarga', 'Shdk', 'SHDK'),
-              pendidikan_terakhir: getVal('Pendidikan Terakhir', 'PENDIDIKAN TERAKHIR', 'pendidikan_terakhir', 'PENDIDIKAN', 'Pendidikan', 'Pend', 'PEND', 'Pddk', 'PDDK'),
-              nama_ibu: getVal('Nama Ibu', 'NAMA IBU', 'nama_ibu', 'IBU', 'Ibu', 'Nama Ibu Kandung', 'NAMA IBU KANDUNG'),
-              nama_ayah: getVal('Nama Ayah', 'NAMA AYAH', 'nama_ayah', 'AYAH', 'Ayah', 'Nama Ayah Kandung', 'NAMA AYAH KANDUNG'),
-              golongan_darah: getVal('Golongan Darah', 'GOLONGAN DARAH', 'golongan_darah', 'GOL DARAH', 'GOL. DARAH', 'Gol Darah', 'Gol. Darah', 'Darah', 'DARAH'),
-              status_perkawinan_dalam_kk: getVal('Status Perkawinan Dalam KK', 'status_perkawinan_dalam_kk', 'Status Kawin KK', 'STATUS KAWIN KK'),
-              tanggal_perkawinan: getVal('Tanggal Perkawinan', 'TANGGAL PERKAWINAN', 'tanggal_perkawinan', 'Tgl Kawin', 'TGL KAWIN', 'Tanggal Kawin', 'TANGGAL KAWIN'),
-              kelainan_fisik_mental: getVal('Kelainan Fisik Mental', 'KELAINAN FISIK MENTAL', 'kelainan_fisik_mental', 'KELAINAN', 'Kelainan', 'Cacat', 'CACAT'),
-              no_telepon: getVal('No Telepon', 'NO TELEPON', 'no_telepon', 'NO. TELEPON', 'TELEPON', 'HP', 'No HP', 'NO HP', 'Handphone', 'HANDPHONE', 'No. HP', 'NO. HP'),
-              no_paspor: getVal('No Paspor', 'NO PASPOR', 'no_paspor', 'Nomor Paspor', 'NOMOR PASPOR', 'Paspor', 'PASPOR'),
-              no_akta_lahir: getVal('No Akta Lahir', 'NO AKTA LAHIR', 'no_akta_lahir', 'Nomor Akta Lahir', 'NOMOR AKTA LAHIR', 'Akta Lahir', 'AKTA LAHIR'),
-              no_akta_kawin: getVal('No Akta Kawin', 'NO AKTA KAWIN', 'no_akta_kawin', 'Nomor Akta Kawin', 'NOMOR AKTA KAWIN', 'Akta Kawin', 'AKTA KAWIN'),
-              created_at: new Date().toISOString().split('T')[0]
-            };
-          });
-          
-          // Filter out empty rows (rows without NIK or Name)
-          const validData = mappedData.filter(row => {
-            const hasNIK = row.nik && row.nik.trim() !== '';
-            const hasName = row.nama_lengkap && row.nama_lengkap.trim() !== '';
-            return hasNIK && hasName;
-          });
-          
-          console.log('Mapped Data Count:', mappedData.length);
-          console.log('Valid Data Count:', validData.length);
-          console.log('Sample Mapped Data (first 3):', mappedData.slice(0, 3));
-          console.log('Sample Valid Data (first 3):', validData.slice(0, 3));
-          
-          // Tampilkan preview untuk semua data (termasuk yang invalid)
-          setImportPreview(mappedData);
-          
-          if (validData.length === 0) {
-            alert(`File Excel tidak berisi data valid.\n\nDitemukan ${mappedData.length} baris data.\n\nPastikan:\n- Kolom NIK dan Nama Lengkap terisi dengan benar\n- Format file sesuai dengan template\n- Periksa preview data di bawah untuk melihat masalahnya\n\nKolom yang terdeteksi: ${data.length > 0 ? Object.keys(data[0]).join(', ') : 'Tidak ada'}`);
-          } else if (validData.length < mappedData.length) {
-            const skipped = mappedData.length - validData.length;
-            alert(`Ditemukan ${mappedData.length} baris data.\n\nData valid: ${validData.length} baris\nData tidak lengkap: ${skipped} baris (NIK atau Nama kosong)\n\nPeriksa preview data di bawah. Baris yang tidak valid ditandai dengan warna merah.`);
-          } else {
-            alert(`Berhasil membaca ${validData.length} data valid!\n\nSemua data siap untuk diimport.\nSilakan periksa preview data di bawah sebelum melanjutkan.`);
-          }
-        } catch (error) {
-          alert('Gagal membaca file. Pastikan format file sesuai dengan template.');
-          console.error('Error reading Excel:', error);
+        if (validData.length === 0) {
+          alert(
+            `File Excel tidak berisi data valid.\n\nDitemukan ${mappedData.length} baris data.\n\nPastikan:\n- Kolom NIK dan Nama Lengkap terisi dengan benar\n- Format file sesuai dengan template\n- Periksa preview data di bawah untuk melihat masalahnya`,
+          );
+        } else if (validData.length < mappedData.length) {
+          const skipped = mappedData.length - validData.length;
+          alert(
+            `Ditemukan ${mappedData.length} baris data.\n\nData valid: ${validData.length} baris\nData tidak lengkap: ${skipped} baris (NIK atau Nama kosong)\n\nPeriksa preview data di bawah. Baris yang tidak valid ditandai dengan warna merah.`,
+          );
+        } else {
+          alert(
+            `Berhasil membaca ${validData.length} data valid!\n\nSemua data siap untuk diimport.\nSilakan periksa preview data di bawah sebelum melanjutkan.`,
+          );
         }
-      };
-      reader.readAsBinaryString(file);
-    }
+      } catch (error) {
+        alert('Gagal membaca file. Pastikan format file sesuai dengan template.');
+        console.error('Error reading Excel:', error);
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
-  const handleImportData = () => {
+  const handleImportData = async () => {
     if (importPreview.length > 0) {
       if (!importTargetDusun) {
         alert('Pilih dusun tujuan import terlebih dahulu!');
@@ -1286,27 +1395,46 @@ const OperatorDashboard = () => {
         );
       });
 
-      const invalidCount = importPreview.length - validData.length;
-      const dataWithTargetDusun = importPreview.map((row) => ({
-        ...row,
-        dusun: importTargetDusun,
-      }));
-      setCitizensData(prev => [...prev, ...dataWithTargetDusun]);
+      try {
+        const res = await apiFetch('/residents/import', {
+          method: 'POST',
+          headers: tokenHeaders(),
+          body: JSON.stringify({
+            dusun_id: importTargetDusun,
+            rows: importPreview.map((row) => ({
+              ...row,
+              dusun_id: importTargetDusun,
+            })),
+          }),
+        });
 
-      if (invalidCount > 0) {
-        alert(
-          `Import selesai!\n\nTotal: ${importPreview.length} data\nValid: ${validData.length} data\nTidak lengkap: ${invalidCount} data (ditandai merah)\n\nSemua data telah ditambahkan ke database.`,
-        );
-      } else {
-        alert(
-          `Berhasil mengimport ${importPreview.length} data penduduk!\n\nSemua data telah ditambahkan ke database.`,
-        );
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || 'Gagal import');
+        }
+
+        const invalidCount = importPreview.length - validData.length;
+        if (invalidCount > 0) {
+          alert(
+            `Import selesai!\n\nTotal: ${importPreview.length} data\nValid: ${validData.length} data\nTidak lengkap: ${invalidCount} data (ditandai merah)`,
+          );
+        } else {
+          alert(
+            `Berhasil mengimport ${importPreview.length} data penduduk ke dusun terpilih!`,
+          );
+        }
+
+        await fetchDusuns();
+        await fetchResidents({ dusun_id: importTargetDusun });
+      } catch (err) {
+        console.error('Import residents failed', err);
+        alert('Gagal import data ke server. Coba lagi atau periksa format.');
       }
-      
+
       setShowImportModal(false);
       setImportFile(null);
       setImportPreview([]);
-      setImportTargetDusun('');
+      setImportTargetDusun(null);
       setImportDusunDropdownOpen(false);
     }
   };
@@ -1461,72 +1589,6 @@ const OperatorDashboard = () => {
     XLSX.writeFile(wb, 'Template_Data_Penduduk.xlsx');
   };
 
-  // Handle Edit Dusun
-  const handleEditDusun = (dusun: Dusun, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingDusun(dusun);
-    setEditDusunForm({
-      name: dusun.name,
-      head_name: dusun.head_name,
-      head_phone: dusun.head_phone || '',
-      rt_count: dusun.rt_count,
-      population_count: dusun.population_count
-    });
-    setShowEditDusun(true);
-  };
-
-  const handleSaveEditDusun = () => {
-    if (!editingDusun) return;
-    
-    // Simulasi update - dalam produksi, kirim ke backend
-    alert(`Dusun "${editDusunForm.name}" berhasil diperbarui!\n\nData yang diupdate:\n- Nama: ${editDusunForm.name}\n- Kepala Dusun: ${editDusunForm.head_name}\n- No. HP: ${editDusunForm.head_phone}\n- Jumlah RT: ${editDusunForm.rt_count}\n- Jumlah Penduduk: ${editDusunForm.population_count}`);
-    
-    setShowEditDusun(false);
-    setEditingDusun(null);
-    setEditDusunForm({
-      name: '',
-      head_name: '',
-      head_phone: '',
-      rt_count: 0,
-      population_count: 0
-    });
-  };
-
-  // Handle Edit RT
-  const handleEditRT = (rtNumber: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const rtData = {
-      id: `rt-${rtNumber}`,
-      name: `RT ${String(rtNumber).padStart(2, '0')}`,
-      ketua: `Bapak RT ${rtNumber}`,
-      phone: `0812345678${rtNumber}`
-    };
-    setEditingRT(rtData);
-    setEditRTForm({
-      name: rtData.name,
-      ketua: rtData.ketua,
-      phone: rtData.phone || '',
-      kk_count: Math.floor(Math.random() * 50) + 20
-    });
-    setShowEditRT(true);
-  };
-
-  const handleSaveEditRT = () => {
-    if (!editingRT) return;
-    
-    // Simulasi update - dalam produksi, kirim ke backend
-    alert(`${editRTForm.name} berhasil diperbarui!\n\nData yang diupdate:\n- Nama RT: ${editRTForm.name}\n- Ketua RT: ${editRTForm.ketua}\n- No. HP: ${editRTForm.phone}\n- Jumlah KK: ${editRTForm.kk_count}`);
-    
-    setShowEditRT(false);
-    setEditingRT(null);
-    setEditRTForm({
-      name: '',
-      ketua: '',
-      phone: '',
-      kk_count: 0
-    });
-  };
-
   const handleUpdateUser = async () => {
     if (!selectedUser) return;
 
@@ -1643,11 +1705,10 @@ const OperatorDashboard = () => {
     setSubmitting(true);
 
     try {
-      const response = await apiFetch('/auth/create-dusun-head', {
+      const response = await apiFetch('/dusun-heads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(newDusunHeadForm)
+        headers: tokenHeaders(),
+        body: JSON.stringify(newDusunHeadForm),
       });
 
       if (response.ok) {
@@ -1664,8 +1725,8 @@ const OperatorDashboard = () => {
         setShowCreateDusunHead(false);
         alert('Akun kepala dusun berhasil dibuat!');
       } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Gagal membuat akun');
+        const text = await response.text();
+        alert(text || 'Gagal membuat akun');
       }
     } catch (error) {
       console.error('Failed to create dusun head:', error);
@@ -1680,51 +1741,66 @@ const OperatorDashboard = () => {
     setSubmitting(true);
 
     try {
-      // Create the dusun head account with rt_number as dusun identifier
-      const response = await apiFetch('/auth/create-dusun-head', {
+      // 1) Buat akun kepala dusun
+      const userRes = await apiFetch('/dusun-heads', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: tokenHeaders(),
         body: JSON.stringify({
           username: newDusunForm.head_username,
           password: newDusunForm.head_password,
           full_name: newDusunForm.head_full_name,
           email: newDusunForm.head_email,
           phone: newDusunForm.head_phone,
-          rt_number: newDusunForm.dusun_code // Use dusun_code as rt_number identifier
-        })
+          rt_number: newDusunForm.dusun_code, // gunakan dusun_code sebagai identifikasi tambahan
+        }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setDusunHeads(prev => [data.user, ...prev]);
-        
-        // Reset form
-        setNewDusunForm({
-          dusun_name: '',
-          dusun_code: '',
-          description: '',
-          head_username: '',
-          head_password: '',
-          head_full_name: '',
-          head_email: '',
-          head_phone: ''
-        });
-        setShowAddDusun(false);
-        alert(`Dusun "${newDusunForm.dusun_name}" berhasil dibuat!\n\nAkun Kepala Dusun:\nUsername: ${newDusunForm.head_username}\nPassword: ${newDusunForm.head_password}\n\nKepala dusun dapat login menggunakan kredensial ini.`);
-        
-        // Refresh dusun heads list
-        const dusunResponse = await apiFetch('/auth/users?role=dusun_head', {
-          credentials: 'include'
-        });
-        if (dusunResponse.ok) {
-          const refreshData = await dusunResponse.json();
-          setDusunHeads(refreshData.users || []);
-        }
-      } else {
-        const errorData = await response.json();
-        alert(errorData.error || 'Gagal membuat dusun dan akun kepala dusun');
+      if (!userRes.ok) {
+        const text = await userRes.text();
+        alert(text || 'Gagal membuat akun kepala dusun');
+        return;
       }
+
+      const userData = await userRes.json();
+      const dusunHead = userData.user || userData;
+      setDusunHeads(prev => [dusunHead, ...prev]);
+
+      // 2) Buat dusun dan kaitkan kepala dusun
+      const dusunRes = await apiFetch('/dusuns', {
+        method: 'POST',
+        headers: tokenHeaders(),
+        body: JSON.stringify({
+          name: newDusunForm.dusun_name,
+          dusun_head_user_id: dusunHead.id,
+          rt_count: 0,
+          population_count: 0,
+          male_count: 0,
+          female_count: 0,
+        }),
+      });
+
+      if (!dusunRes.ok) {
+        const text = await dusunRes.text();
+        alert(text || 'Akun kepala dusun dibuat, tetapi gagal membuat dusun');
+        return;
+      }
+
+      // Refetch dusun agar UI terbarui
+      await fetchDusuns();
+
+      // Reset form
+      setNewDusunForm({
+        dusun_name: '',
+        dusun_code: '',
+        description: '',
+        head_username: '',
+        head_password: '',
+        head_full_name: '',
+        head_email: '',
+        head_phone: ''
+      });
+      setShowAddDusun(false);
+      alert(`Dusun "${newDusunForm.dusun_name}" berhasil dibuat!\n\nAkun Kepala Dusun:\nUsername: ${newDusunForm.head_username}\nPassword: ${newDusunForm.head_password}\n\nKepala dusun dapat login menggunakan kredensial ini.`);
     } catch (error) {
       console.error('Failed to create dusun:', error);
       alert('Gagal membuat dusun');
@@ -2259,7 +2335,7 @@ const OperatorDashboard = () => {
             </div>
             <div className="flex justify-between items-center py-2">
               <span className="text-sm text-gray-600">Pesan Belum Dibaca</span>
-              <span className="font-semibold text-red-600">{messages.filter(m => !m.is_read).length}</span>
+              <span className="font-semibold text-red-600">{chatThreads.reduce((acc, t) => acc + (t.unread_count || 0), 0)}</span>
             </div>
           </div>
         </div>
@@ -2327,18 +2403,14 @@ const OperatorDashboard = () => {
   );
 
   const renderMessages = () => {
-    const categories: Array<{ id: MessageCategory | 'all'; label: string }> = [
+    const categories: Array<{ id: number | 'all'; label: string }> = [
       { id: 'all', label: 'Semua' },
-      { id: 'chat', label: 'Chat' },
-      { id: 'administrasi', label: 'Layanan Administrasi' },
-      { id: 'ppid', label: 'PPID' },
-      { id: 'pengaduan', label: 'Pengaduan' },
-      { id: 'aspirasi', label: 'Aspirasi' },
+      ...chatCategories.map(c => ({ id: c.id, label: c.label })),
     ];
 
-    const list = messageCategory === 'all' || !user
-      ? messages
-      : getByCategoryFor(user.id, messageCategory);
+    const list = messageCategory === 'all'
+      ? chatThreads
+      : chatThreads.filter(t => t.category?.id === messageCategory);
 
     return (
       <div className="space-y-6">
@@ -2346,13 +2418,13 @@ const OperatorDashboard = () => {
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Pesan Masyarakat</h2>
             <p className="text-sm text-gray-600 mt-1">
-              {list.length} pesan {messageCategory === 'all' ? 'dari semua kategori' : `dari kategori ${messageCategory}`}
+              {list.length} pesan {messageCategory === 'all' ? 'dari semua kategori' : `dari kategori terpilih`}
             </p>
           </div>
           <div className="flex items-center space-x-2">
             <select
               value={messageCategory}
-              onChange={(e) => setMessageCategory(e.target.value as any)}
+              onChange={(e) => setMessageCategory(e.target.value === 'all' ? 'all' : Number(e.target.value))}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               {categories.map(c => (
@@ -2373,22 +2445,36 @@ const OperatorDashboard = () => {
                   <p className="text-sm mt-1">Belum ada pesan dari masyarakat untuk kategori ini</p>
                 </div>
               ) : (
-                list.map(m => (
+                list.map(t => (
                   <button
-                    key={m.id}
-                    onClick={() => { setSelectedMessage(m); markRead(m.id); setMessages(getReceivedFor(user!.id)); }}
-                    className={`w-full text-left p-4 hover:bg-gray-50 ${selectedMessage?.id === m.id ? 'bg-gray-50' : ''}`}
+                    key={t.id}
+                    onClick={async () => {
+                      if (!user) return;
+                      const token = localStorage.getItem('auth_token');
+                      if (!token) return;
+                      try {
+                        setSelectedThread(t);
+                        const msgsRes = await fetchChatMessages(token, t.id);
+                        setChatMessages(msgsRes.data);
+                        await markChatRead(token, t.id);
+                        const threadsRes = await fetchChatThreads(token);
+                        setChatThreads(threadsRes.data);
+                      } catch (e) {
+                        console.error('Failed to open thread', e);
+                      }
+                    }}
+                    className={`w-full text-left p-4 hover:bg-gray-50 ${selectedThread?.id === t.id ? 'bg-gray-50' : ''}`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
-                          {!m.is_read && <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>}
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 capitalize">{m.category}</span>
+                          {t.unread_count > 0 && <span className="w-2 h-2 bg-emerald-500 rounded-full"></span>}
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 capitalize">{t.category?.label}</span>
                         </div>
-                        <p className="font-semibold text-gray-900 mt-1 line-clamp-1">{m.subject}</p>
-                        <p className="text-sm text-gray-600 line-clamp-2">{m.content}</p>
+                        <p className="font-semibold text-gray-900 mt-1 line-clamp-1">{t.subject}</p>
+                        <p className="text-sm text-gray-600 line-clamp-2">{t.last_message?.content || ''}</p>
                       </div>
-                      <span className="text-xs text-gray-400 ml-2">{new Date(m.created_at).toLocaleString('id-ID')}</span>
+                      <span className="text-xs text-gray-400 ml-2">{t.last_message?.created_at ? new Date(t.last_message.created_at).toLocaleString('id-ID') : ''}</span>
                     </div>
                   </button>
                 ))
@@ -2398,89 +2484,63 @@ const OperatorDashboard = () => {
 
           {/* Details */}
           <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6">
-            {!selectedMessage ? (
-              <div className="text-center text-gray-500">Pilih pesan untuk melihat detail</div>
+            {!selectedThread ? (
+              <div className="text-center text-gray-500">Pilih percakapan untuk mulai chat</div>
             ) : (
               <div className="space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{selectedMessage.subject}</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">{selectedThread.subject}</h3>
                     <div className="flex items-center space-x-2 mt-1 text-sm">
-                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 capitalize">{selectedMessage.category}</span>
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 capitalize">{selectedMessage.status}</span>
-                      <span className="text-gray-500">{new Date(selectedMessage.created_at).toLocaleString('id-ID')}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 capitalize">{selectedThread.category?.label}</span>
+                      <span className="text-gray-500">{selectedThread.citizen?.full_name}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 bg-gray-50 rounded-lg text-gray-800 whitespace-pre-wrap">{selectedMessage.content}</div>
-
-                {/* History */}
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Riwayat Status</h4>
-                  <div className="space-y-1 text-sm">
-                    {selectedMessage.history.map((h, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                        <div className="text-gray-700 capitalize">{h.status}{h.note ? ` — ${h.note}` : ''}</div>
-                        <div className="text-gray-400">{new Date(h.at).toLocaleString('id-ID')}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Replies */}
-                <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Percakapan</h4>
-                  <div className="space-y-2">
-                    {selectedMessage.replies.length === 0 ? (
-                      <div className="text-gray-500 text-sm">Belum ada balasan</div>
-                    ) : (
-                      selectedMessage.replies.map(r => (
-                        <div key={r.id} className="p-3 bg-gray-50 rounded text-sm">
-                          <div className="text-gray-800 whitespace-pre-wrap">{r.content}</div>
-                          <div className="text-xs text-gray-400 mt-1">{new Date(r.at).toLocaleString('id-ID')}</div>
+                <div className="space-y-3 max-h-[52vh] overflow-y-auto p-2">
+                  {chatMessages.map((m) => {
+                    const isFromOperator = m.sender_user_id === user?.id;
+                    return (
+                      <div key={m.id} className={`flex ${isFromOperator ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[75%] ${isFromOperator ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-900'} rounded-2xl px-4 py-3`}>
+                          <div className={`text-sm whitespace-pre-wrap ${isFromOperator ? 'text-white' : 'text-gray-800'}`}>{m.content}</div>
+                          <div className={`text-xs mt-1 ${isFromOperator ? 'text-emerald-100' : 'text-gray-500'}`}>{new Date(m.created_at).toLocaleString('id-ID')}</div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Actions */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
-                  <div className="lg:col-span-2">
+                <div className="border-t pt-3">
+                  <div className="flex gap-3">
                     <textarea
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      rows={3}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      rows={2}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2"
                       placeholder="Tulis balasan untuk warga..."
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <select
-                      value={newStatus}
-                      onChange={(e) => setNewStatus(e.target.value as MessageStatus)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    >
-                      <option value="dibaca">Tandai Dibaca</option>
-                      <option value="diproses">Tandai Diproses</option>
-                      <option value="selesai">Tandai Selesai</option>
-                      <option value="ditutup">Tutup</option>
-                    </select>
                     <button
-                      onClick={() => {
-                        if (!user || !selectedMessage) return;
-                        if (replyText.trim()) {
-                          addReply(selectedMessage.id, user.id, replyText.trim());
+                      onClick={async () => {
+                        if (!user || !selectedThread || !replyText.trim()) return;
+                        const token = localStorage.getItem('auth_token');
+                        if (!token) return;
+                        try {
+                          await sendChatMessage(token, selectedThread.id, replyText.trim());
                           setReplyText('');
+                          const msgsRes = await fetchChatMessages(token, selectedThread.id);
+                          setChatMessages(msgsRes.data);
+                          await markChatRead(token, selectedThread.id);
+                          const threadsRes = await fetchChatThreads(token);
+                          setChatThreads(threadsRes.data);
+                        } catch (e) {
+                          console.error('Failed to send operator chat message', e);
                         }
-                        const updated = updateStatus(selectedMessage.id, newStatus);
-                        if (updated) setSelectedMessage({ ...updated });
-                        setMessages(getReceivedFor(user.id));
                       }}
-                      className="w-full btn-primary py-2"
+                      className="btn-primary px-6"
                     >
-                      Kirim & Update Status
+                      Kirim
                     </button>
                   </div>
                 </div>
@@ -2830,10 +2890,10 @@ const OperatorDashboard = () => {
       <Kelolapenduduk
         citizensData={citizensData}
         dusuns={dusuns.map((d) => ({
-          id: d.id,
+          id: String(d.id),
           name: d.name,
-          head_name: d.head_name,
-          head_phone: d.head_phone,
+          head_name: d.head_name ?? '',
+          head_phone: d.head_phone ?? '',
           rt_count: d.rt_count,
           population_count: d.population_count,
         }))}
@@ -2853,12 +2913,8 @@ const OperatorDashboard = () => {
         setShowAddDusun={setShowAddDusun}
         selectedDusun={selectedDusun}
         setSelectedDusun={setSelectedDusun}
-        selectedRT={selectedRT}
-        setSelectedRT={setSelectedRT}
         sortCitizensForDisplay={sortCitizensForDisplay}
         setSelectedCitizens={setSelectedCitizens}
-        handleEditDusun={handleEditDusun as any}
-        handleEditRT={handleEditRT as any}
       />
     );
   };
@@ -5050,7 +5106,7 @@ const OperatorDashboard = () => {
                   <div className="text-sm text-gray-700">Total Permohonan</div>
                 </div>
                 <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
-                  <div className="text-2xl font-bold text-emerald-600">{messages.length}</div>
+                  <div className="text-2xl font-bold text-emerald-600">{chatThreads.length}</div>
                   <div className="text-sm text-gray-700">Total Pesan</div>
                 </div>
                 <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
@@ -5657,7 +5713,7 @@ const OperatorDashboard = () => {
                     setShowImportModal(false);
                     setImportFile(null);
                     setImportPreview([]);
-                    setImportTargetDusun('');
+                    setImportTargetDusun(null);
                     setImportDusunDropdownOpen(false);
                   }}
                   className="text-gray-400 hover:text-gray-600"
@@ -5729,7 +5785,7 @@ const OperatorDashboard = () => {
                         onClick={() => {
                           setImportFile(null);
                           setImportPreview([]);
-                          setImportTargetDusun('');
+                          setImportTargetDusun(null);
                           // Reset file input
                           const fileInput = document.getElementById('import-file') as HTMLInputElement;
                           if (fileInput) fileInput.value = '';
@@ -5797,7 +5853,7 @@ const OperatorDashboard = () => {
                         <div>
                           <div className="text-sm font-semibold text-gray-800">Dusun Tujuan Import</div>
                           <div className="text-xs text-gray-600 mt-0.5">
-                            {importTargetDusun ? `Terpilih: ${importTargetDusun}` : 'Klik untuk memilih dusun tujuan'}
+                            {importTargetDusun ? `Terpilih: ${importTargetDusunOptions.find((d) => d.id === importTargetDusun)?.name ?? '-'}` : 'Klik untuk memilih dusun tujuan'}
                           </div>
                         </div>
                         <span className="text-gray-500 text-sm">{importDusunDropdownOpen ? '▲' : '▼'}</span>
@@ -5806,14 +5862,14 @@ const OperatorDashboard = () => {
                         <div className="px-4 pb-4">
                           <label className="block text-xs font-semibold text-gray-600 mb-1">Pilih Dusun</label>
                           <select
-                            value={importTargetDusun}
-                            onChange={(e) => setImportTargetDusun(e.target.value)}
+                            value={importTargetDusun ?? ''}
+                            onChange={(e) => setImportTargetDusun(e.target.value ? Number(e.target.value) : null)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
                           >
                             <option value="">-- Pilih Dusun Tujuan --</option>
                             {importTargetDusunOptions.map((d) => (
-                              <option key={d} value={d}>
-                                {d}
+                              <option key={d.id} value={d.id}>
+                                {d.name}
                               </option>
                             ))}
                           </select>
@@ -5981,7 +6037,7 @@ const OperatorDashboard = () => {
                   setShowImportModal(false);
                   setImportFile(null);
                   setImportPreview([]);
-                  setImportTargetDusun('');
+                  setImportTargetDusun(null);
                 }}
                 className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
               >

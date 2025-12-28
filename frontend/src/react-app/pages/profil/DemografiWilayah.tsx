@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { useContentAnimation, useStaggeredAnimation } from '@/react-app/hooks/useContentAnimation';
 import { useState, useEffect } from 'react';
+import type { RefObject } from 'react';
 
 const DemografiWilayah = () => {
   const { isVisible: wilayahVisible, elementRef: wilayahRef } = useContentAnimation({ delay: 400 });
@@ -126,7 +127,7 @@ const DemografiWilayah = () => {
       setCurrentDemoSlide((prev) => (prev + 1) % demoStats.length);
     }, 3000);
     return () => clearInterval(timer);
-  }, []);
+  }, [demoStats.length]);
 
   return (
     <PageLayout
@@ -146,7 +147,7 @@ const DemografiWilayah = () => {
             <h2 className="text-2xl md:text-3xl font-bold text-gray-800 text-center mb-8 md:mb-12">Wilayah & Peta Desa</h2>
             
             <div 
-              ref={wilayahRef as any}
+              ref={wilayahRef as unknown as RefObject<HTMLDivElement>}
               className={`${wilayahVisible ? 'animate-slide-up' : 'opacity-0'}`}
             >
               {/* 2 Column Layout */}
@@ -553,7 +554,7 @@ const DemografiWilayah = () => {
             </div>
 
             {/* Statistik Utama Desktop */}
-            <div ref={demoRef as any} className="hidden md:grid md:grid-cols-4 gap-6 mb-12">
+            <div ref={demoRef as unknown as RefObject<HTMLDivElement>} className="hidden md:grid md:grid-cols-4 gap-6 mb-12">
               {demoStats.map((stat, index) => (
                 <div key={index} className={`bg-gradient-to-br ${stat.color} rounded-2xl p-6 text-white text-center hover-lift hover-glow ${
                   demoItems[index] ? 'animate-bounce-in' : 'opacity-0'

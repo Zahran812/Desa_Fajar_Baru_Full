@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Request as UserRequest; // Alias untuk menghindari konflik nama
 use App\Models\Service;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\View;
 
 class RequestController extends Controller
 {
@@ -66,12 +68,15 @@ class RequestController extends Controller
             'subject' => 'required|string|max:255',
             'description' => 'required|string',
             'document_mapping' => 'required|json', // Mapping: "Nama Persyaratan:document_0"
+            'letter_input_data' => 'required|json',
+            'template_id' => 'nullable|integer',
             // File validation di sini bersifat opsional karena nama file dinamis,
             // tetapi kita bisa memvalidasi saat memproses file.
         ]);
 
         // 2. Dekode Mapping Dokumen
         $documentMapping = json_decode($validatedData['document_mapping'], true);
+        $letterInputData = json_decode($validatedData['letter_input_data'], true);
         
         // 3. Verifikasi Keberadaan File dan Format Mapping
         $documentData = [];
@@ -100,7 +105,8 @@ class RequestController extends Controller
             $fileKeyIndex++;
         }
         
-        return DB::transaction(function () use ($request, $validatedData, $documentData) {
+        // PERBAIKAN: Sertakan $letterInputData ke dalam klausa use() pada DB::transaction
+        return DB::transaction(function () use ($request, $validatedData, $documentData, $letterInputData) {
             
             // 4. Buat Record Pengajuan Utama
             $requestRecord = UserRequest::create([
@@ -142,6 +148,11 @@ class RequestController extends Controller
             
             // 6. Simpan Record Dokumen
             $requestRecord->documents()->createMany($newDocuments);
+
+            // 7. Simpan letter_input_data. Karena Model memiliki casts 'array', kita bisa langsung menyimpan array PHP.
+            $requestRecord->letter_input_data = $letterInputData; // <-- Langsung set array
+            $requestRecord->generated_html_content = null;
+            $requestRecord->save();
 
             // Muat ulang relasi untuk response
             return response()->json([
@@ -469,8 +480,6 @@ class RequestController extends Controller
             return response()->json(['message' => 'Terjadi kesalahan: ' . $e->getMessage()], 500);
         }
     }
-
-    // Fungsi lain seperti show, update, delete dapat ditambahkan di sini.
 
     /**
      * Menampilkan detail satu pengajuan.

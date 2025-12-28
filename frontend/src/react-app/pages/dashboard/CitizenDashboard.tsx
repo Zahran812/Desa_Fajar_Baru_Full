@@ -11,11 +11,16 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
-  getMessagesForUser,
-  sendMessage,
-  type AppMessage,
-  type MessageCategory,
-} from '@/react-app/lib/messageStore';
+  createChatThread,
+  fetchChatCategories,
+  fetchChatMessages,
+  fetchChatThreads,
+  markChatRead,
+  sendChatMessage,
+  type ChatCategory,
+  type ChatMessage,
+  type ChatThread,
+} from '@/react-app/lib/chatApi';
 
 interface ServiceTemplate {
   id: number;
@@ -55,11 +60,19 @@ interface Request {
 }
 
 
+const numberPlaceholderKeys = ['nomor_surat', 'no_surat', 'nomor'];
+
+type DashboardNotification = {
+  action?: { tab?: string };
+};
+
 const CitizenDashboard = () => {
   const { user, logout, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [requests, setRequests] = useState<Request[]>([]);
-  const [messages, setMessages] = useState<AppMessage[]>([]);
+  const [chatCategories, setChatCategories] = useState<ChatCategory[]>([]);
+  const [chatThreads, setChatThreads] = useState<ChatThread[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [newRequestForm, setNewRequestForm] = useState({
@@ -95,13 +108,170 @@ const CitizenDashboard = () => {
   // State untuk menyimpan file upload. Key: nama persyaratan, Value: File object
   const [requiredDocuments, setRequiredDocuments] = useState<Record<string, File | null>>({});
   // Messages UI state
-  const [msgCategoryFilter, setMsgCategoryFilter] = useState<MessageCategory | 'all'>('all');
-  const [compose, setCompose] = useState({ category: '' as MessageCategory | '', subject: '', content: '' });
+  const [msgCategoryFilter, setMsgCategoryFilter] = useState<number | 'all'>('all');
+  const [compose, setCompose] = useState({ chat_category_id: '' as number | '', subject: '', content: '' });
   // Cara Pengajuan modal state
   const [showGuideModal, setShowGuideModal] = useState(false);
   // Selected message for conversation view
-  const [selectedMessage, setSelectedMessage] = useState<AppMessage | null>(null);
+  const [selectedThread, setSelectedThread] = useState<ChatThread | null>(null);
   const [replyText, setReplyText] = useState('');
+  // Template & letter input (filled by citizen)
+  const [templateHtml, setTemplateHtml] = useState<{ kop_html?: string; body_html?: string; id?: number; service_id?: number } | null>(null);
+  const [letterPlaceholders, setLetterPlaceholders] = useState<string[]>([]);
+  const [letterValues, setLetterValues] = useState<Record<string, string>>({});
+  const [showLetterModal, setShowLetterModal] = useState(false);
+  const [letterDataFilled, setLetterDataFilled] = useState(false);
+
+  const replacePlaceholders = (html: string) => {
+    return html.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+      if (numberPlaceholderKeys.some(n => key === n || key.includes(n))) return '...';
+      return letterValues[key] ?? '';
+    });
+  };
+
+  const renderLetterModal = () => {
+    if (!showLetterModal || !selectedService) return null;
+    const displayPlaceholders = letterPlaceholders.filter(k => !numberPlaceholderKeys.some(n => k === n || k.includes(n)));
+    const kopHtml = templateHtml?.kop_html ? replacePlaceholders(templateHtml.kop_html) : '';
+    const bodyHtml = templateHtml?.body_html ? replacePlaceholders(templateHtml.body_html) : '';
+    const normalizeAssetUrls = (html: string) => {
+      const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+      const baseUrl = import.meta.env.BASE_URL || '/';
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const stripBasePrefix = (path: string) => {
+        const escapedBase = baseUrl.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        return path.replace(new RegExp(`^${escapedBase}`), '');
+      };
+      const toApi = (path: string) => `${apiBase}/${path.replace(/^\//, '')}`;
+      const toBase = (path: string) => {
+        const cleaned = stripBasePrefix(path);
+        const basePath = `${baseUrl}${cleaned.replace(/^\/+/, '')}`;
+        return origin ? `${origin}${basePath}` : basePath;
+      };
+      return html
+        // Blade asset helper (umum, kecuali kop/)
+        .replace(/{{\s*asset\(['"](?!kop\/)([^'"]+)['"]\)\s*}}/g, (_m, p1) => toApi(p1))
+        .replace(/asset\(['"](?!kop\/)([^'"]+)['"]\)/g, (_m, p1) => toApi(p1))
+        // kop assets → BASE_URL (public)
+        .replace(/asset\(['"]kop\/([^'"]+)['"]\)/g, (_m, p1) => toBase(`kop/${p1}`))
+        .replace(/{{\s*asset\(['"]kop\/([^'"]+)['"]\)\s*}}/g, (_m, p1) => toBase(`kop/${p1}`))
+        // relative src kop/* (allow optional /frontend/)
+        .replace(/src=["'](?!https?:\/\/)(\/?(?:frontend\/)?)(kop\/[^"']+)["']/g, (_m, _s, path) => `src="${toBase(path)}"`)
+        // relative src Logo/* (allow optional /frontend/)
+        .replace(/src=["'](?!https?:\/\/)(\/?(?:frontend\/)?)(Logo\/[^"']+)["']/g, (_m, _s, path) => `src="${toBase(path)}"`)
+        // fallback brace-wrapped kop paths (allow optional /frontend/)
+        .replace(/{{\s*\/?(?:frontend\/)?(kop\/[^}]+)\s*}}/g, (_m, p1) => toBase(p1))
+        // unwrap brace-wrapped absolute URLs (already correct)
+        .replace(/{{\s*(https?:\/\/[^}\s]+)\s*}}/g, (_m, p1) => p1);
+    };
+    const kopNormalized = normalizeAssetUrls(kopHtml);
+    const bodyNormalized = normalizeAssetUrls(bodyHtml);
+    const styledHtml = `
+      <style>
+        .letterhead { position: relative; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 3px solid #000; overflow: hidden; }
+        .letterhead-logo { float: left; width: 90px; text-align: center; margin-top: 5px; }
+        .letterhead-logo img { width: 80px; height: auto; }
+        .letterhead-text { margin-left: 5px; text-align: center; padding-top: 0; }
+        .letterhead-text .lh1, .letterhead-text .lh2, .letterhead-text .lh3, .letterhead-text .addr { margin: 0; padding: 0; line-height: 1.3; }
+        .lh1 { font-size: 16pt; font-weight: bold; letter-spacing: 1px; }
+        .lh2 { font-size: 16pt; font-weight: bold; letter-spacing: 1px; }
+        .lh3 { font-size: 19pt; font-weight: bold; letter-spacing: 2px; margin-top: 3px; margin-bottom: 3px; }
+        .addr { margin-left: 5px; font-size: 10pt; font-style: italic; letter-spacing: 0.8px; }
+        .body-wrapper { margin-top: 12px; }
+      </style>
+      <div class="letterhead">${kopNormalized}</div>
+      <div class="body-wrapper">${bodyNormalized}</div>
+    `;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowLetterModal(false)}>
+        <div
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-[96vw] lg:max-w-[1400px] max-h-[95vh] overflow-hidden flex flex-col"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white">
+            <div>
+              <h3 className="text-xl font-bold">Isi Data Surat - {selectedService.name}</h3>
+              <p className="text-sm text-emerald-100">Nomor surat akan diinput operator. Lengkapi kolom lainnya.</p>
+            </div>
+            <button onClick={() => setShowLetterModal(false)} className="p-2 hover:bg-white/10 rounded-lg">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-4 p-5 overflow-y-auto flex-1">
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 shadow-sm">
+              <h4 className="font-semibold text-gray-800 mb-3 text-center">Preview Surat</h4>
+              <div className="bg-white rounded-lg p-4 border shadow-sm max-h-[72vh] overflow-y-auto">
+                {templateHtml ? (
+                  <div
+                    className="prose max-w-none"
+                    style={{
+                      width: '210mm',
+                      minHeight: '297mm',
+                      padding: '12mm',
+                      boxSizing: 'border-box',
+                      fontFamily: 'Times New Roman, serif',
+                      fontSize: '11pt',
+                      lineHeight: 1.5,
+                      background: 'white',
+                      margin: '0 auto',
+                    }}
+                    dangerouslySetInnerHTML={{ __html: styledHtml }}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-600">Template belum tersedia untuk layanan ini.</p>
+                )}
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold text-gray-800">Data Surat</h4>
+                  <p className="text-[11px] text-gray-500">Simpan untuk memvalidasi sebelum kirim</p>
+                </div>
+                {displayPlaceholders.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {displayPlaceholders.map((key) => (
+                      <div key={key} className="flex flex-col">
+                        <label className="text-xs font-semibold text-gray-600">{key}</label>
+                        <input
+                          type="text"
+                          value={letterValues[key] || ''}
+                          onChange={(e) => setLetterValues(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">Template tidak memiliki placeholder khusus. Operator akan membantu melengkapi bila diperlukan.</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowLetterModal(false)}
+                  className="px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLetterDataFilled(true);
+                    setShowLetterModal(false);
+                  }}
+                  className="px-5 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  Simpan Data Surat
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Redirect if not authorized
   useEffect(() => {
@@ -111,71 +281,91 @@ const CitizenDashboard = () => {
   }, [user]);
 
   // Fetch user data and load messages from local store (demo)
-useEffect(() => {
-  const fetchServices = async () => {
-    try {
-      const response = await apiFetch(`/pubservices`);
-      if (response.ok) {
-        const data: Service[] = await response.json();
-        setServices(data);
-      } else {
-        console.error("Failed to fetch services");
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const response = await apiFetch(`/pubservices`);
+        if (response.ok) {
+          const data: Service[] = await response.json();
+          setServices(data);
+        } else {
+          console.error("Failed to fetch services");
+        }
+      } catch (error) {
+        console.error('Error fetching services:', error);
       }
-    } catch (error) {
-      console.error('Error fetching services:', error);
-    }
-  };
+    };
 
-  const fetchRequests = async () => {
-    await fetchServices(); // <- HARUS PAKAI KURUNG
+    const fetchRequests = async () => {
+      await fetchServices(); // <- HARUS PAKAI KURUNG
 
-    try {
-      const token = localStorage.getItem("auth_token");
-      if (!token || !user) {
-        console.error("No auth token found");
-        setRequests([]);
-        return;
+      try {
+        const token = localStorage.getItem("auth_token");
+        if (!token || !user) {
+          console.error("No auth token found");
+          setRequests([]);
+          return;
+        }
+
+        const response = await apiFetch(`/requests/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          console.error("Failed to fetch requests");
+          setRequests([]);
+          return;
+        }
+
+        const data = await response.json();
+        const items = Array.isArray(data.requests) ? data.requests : [];
+
+        const validRequests = items.filter((item: Request) =>
+          item &&
+          typeof item === "object" &&
+          "id" in item &&
+          "request_type" in item &&
+          "subject" in item &&
+          "description" in item &&
+          "status" in item &&
+          "user" in item &&
+          "service" in item &&
+          "documents" in item &&
+          Array.isArray(item.documents)
+        );
+
+        setRequests(validRequests);
+
+      } finally {
+        setLoading(false);
       }
+    };
 
-      const response = await apiFetch(`/requests/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-        },
-      });
+    fetchRequests();
+  }, [user]);
 
-      if (!response.ok) {
-        console.error("Failed to fetch requests");
-        setRequests([]);
-        return;
+  useEffect(() => {
+    const loadChat = async () => {
+      if (!user) return;
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+      try {
+        const [cats, threadsRes] = await Promise.all([
+          fetchChatCategories(token),
+          fetchChatThreads(token),
+        ]);
+        setChatCategories(cats);
+        setChatThreads(threadsRes.data);
+      } catch (e) {
+        console.error('Failed to load chat data', e);
       }
+    };
 
-      const data = await response.json();
-      const items = Array.isArray(data.requests) ? data.requests : [];
-
-      const validRequests = items.filter((item: Request) =>
-        item &&
-        typeof item === "object" &&
-        "id" in item &&
-        "request_type" in item &&
-        "subject" in item &&
-        "description" in item &&
-        "status" in item &&
-        "user" in item &&
-        "service" in item &&
-        "documents" in item &&
-        Array.isArray(item.documents)
-      );
-
-      setRequests(validRequests);
-
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchRequests();
-}, [user]);
+    loadChat();
+  }, [user]);
 
 
   useEffect(() => {
@@ -188,12 +378,61 @@ useEffect(() => {
       initialDocs[req] = null;
     });
     setRequiredDocuments(initialDocs);
+    setLetterDataFilled(false);
+    setTemplateHtml(null);
+    setLetterValues({});
   }, [newRequestForm.request_type, services]);
+
+  useEffect(() => {
+    const fetchTemplate = async () => {
+      if (!selectedService) return;
+      try {
+        const token = localStorage.getItem('auth_token');
+        const response = await apiFetch(`/letter-templates/service/${selectedService.id}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await response.json();
+        let tmpl: { kop_html?: string; body_html?: string; id?: number; service_id?: number } | null = null;
+        if (Array.isArray(data) && data.length > 0) tmpl = data[0];
+        else if (data && data.data && typeof data.data === 'object') tmpl = data.data;
+        else if (data && data.service_id) tmpl = data;
+        if (tmpl) {
+          setTemplateHtml(tmpl);
+          const combined = `${tmpl.kop_html || ''} ${tmpl.body_html || ''}`;
+          const matches = combined.match(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g) || [];
+          const keys = Array.from(new Set(matches.map(m => m.replace('{{', '').replace('}}', '').trim())));
+          setLetterPlaceholders(keys);
+          const filtered = keys.filter(k => !numberPlaceholderKeys.some(n => k === n || k.includes(n)));
+          setLetterValues(prev => {
+            const next: Record<string, string> = { ...prev };
+            filtered.forEach(k => {
+              if (!(k in next)) next[k] = '';
+            });
+            return next;
+          });
+        } else {
+          setTemplateHtml(null);
+          setLetterPlaceholders([]);
+          setLetterValues({});
+        }
+      } catch (e) {
+        console.error('Failed to fetch letter template for citizen', e);
+        setTemplateHtml(null);
+        setLetterPlaceholders([]);
+      }
+    };
+    if (selectedService) {
+      fetchTemplate();
+    }
+  }, [selectedService]);
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     { id: 'requests', label: 'Pengajuan Saya', icon: FileText, badge: requests.filter(r => r.status === 'pending').length },
-    { id: 'messages', label: 'Pesan', icon: MessageSquare, badge: messages.filter(m => !m.is_read && m.to_user_id === user?.id).length },
+    { id: 'messages', label: 'Pesan', icon: MessageSquare, badge: chatThreads.reduce((acc, t) => acc + (t.unread_count || 0), 0) },
   ];
 
   // Notifications with proper actions that redirect to relevant tabs
@@ -261,6 +500,21 @@ useEffect(() => {
       return;
     }
 
+    const displayPlaceholders = letterPlaceholders.filter(k => !numberPlaceholderKeys.some(n => k === n || k.includes(n)));
+    if (displayPlaceholders.length > 0) {
+      const hasEmpty = displayPlaceholders.some(k => !(letterValues[k] && letterValues[k].trim()));
+      if (hasEmpty) {
+        alert('Mohon lengkapi data surat pada modal "Isi Data Surat".');
+        setShowLetterModal(true);
+        return;
+      }
+      if (!letterDataFilled) {
+        alert('Mohon simpan data surat terlebih dahulu.');
+        setShowLetterModal(true);
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     // 1. Buat FormData
@@ -288,6 +542,8 @@ useEffect(() => {
 
     // Kirim mapping nama dokumen
     formData.append('document_mapping', JSON.stringify(documentKeys));
+    formData.append('letter_input_data', JSON.stringify(letterValues || {}));
+    if (templateHtml?.id) formData.append('template_id', String(templateHtml.id));
 
     const token = localStorage.getItem("auth_token");
 
@@ -308,20 +564,39 @@ useEffect(() => {
         credentials: 'include', 
       });
 
+      const responseText = await response.text();
+      type SubmitResponse = {
+        request?: Request;
+        message?: string;
+        error?: string;
+      };
+      let parsedData: SubmitResponse | null = null;
+      try {
+        parsedData = responseText ? JSON.parse(responseText) : null;
+      } catch {
+        console.error('Failed to parse response JSON, raw text:', responseText);
+      }
+
       if (response.ok) {
-        const data = await response.json();
-        setRequests(prev => [data.request, ...prev]);
+        const data = parsedData;
+        const newRequest = data?.request;
+        if (newRequest) {
+          setRequests(prev => [newRequest, ...prev]);
+        }
 
         setNewRequestForm({ request_type: '', subject: '', description: '' });
         setSelectedService(null);
         setRequiredDocuments({});
+        setLetterValues({});
+        setLetterPlaceholders([]);
+        setLetterDataFilled(false);
         setActiveTab('requests');
 
         alert('Pengajuan Berhasil Dikirim!');
       } else {
-        const errorData = await response.json();
-        console.error('API Error:', errorData);
-        alert(`Gagal mengirim pengajuan: ${errorData.message || 'Terjadi kesalahan server.'}`);
+        const message = parsedData?.message || parsedData?.error || responseText || 'Terjadi kesalahan server.';
+        console.error('API Error:', parsedData || responseText);
+        alert(`Gagal mengirim pengajuan: ${message}`);
       }
     } catch (error) {
       console.error('Failed to submit request:', error);
@@ -445,7 +720,7 @@ useEffect(() => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Pesan</p>
-              <p className="text-2xl font-bold text-gray-900">{messages.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{chatThreads.length}</p>
               <div className="flex items-center space-x-1 mt-1">
                 <span className="text-xs text-blue-600">+5.2%</span>
                 <span className="text-xs text-gray-500">from last month</span>
@@ -641,6 +916,32 @@ useEffect(() => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* 4. Isi Data Surat (modal trigger) */}
+          {selectedService && (
+            <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-emerald-800 flex items-center gap-2">
+                    <FileText className="w-5 h-5" /> Isi Data Surat
+                  </h3>
+                  <p className="text-sm text-emerald-700">Lengkapi data surat sesuai template. Nomor surat tetap diisi operator.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLetterModal(true)}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                >
+                  Buka Form
+                </button>
+              </div>
+              {letterDataFilled && (
+                <p className="text-sm text-emerald-700 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" /> Data surat sudah disimpan, dapat dikirim ke operator.
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -1454,6 +1755,39 @@ useEffect(() => {
             </div>
           )}
 
+          {/* 4. Isi Data Surat (modal trigger - utama) */}
+          {selectedService && (
+            <div className="p-6 bg-emerald-50 border border-emerald-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-emerald-800 flex items-center gap-2">
+                    <FileText className="w-5 h-5" /> Isi Data Surat
+                  </h3>
+                  <p className="text-sm text-emerald-700">
+                    Lengkapi data sesuai template. Nomor surat akan diisi oleh operator.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLetterModal(true)}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                >
+                  Buka Form
+                </button>
+              </div>
+              {letterPlaceholders.length === 0 && (
+                <p className="text-xs text-emerald-700">
+                  Template ini tidak memiliki placeholder khusus; operator dapat melengkapi bila perlu.
+                </p>
+              )}
+              {letterDataFilled && (
+                <p className="text-sm text-emerald-700 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" /> Data surat tersimpan, siap dikirim ke operator.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Tombol Kirim */}
           <div className="flex space-x-4">
             <button
@@ -1496,61 +1830,40 @@ useEffect(() => {
   );
 
   const renderMessages = () => {
-    const categories: Array<{ id: MessageCategory | 'all'; label: string }> = [
+    const categories: Array<{ id: number | 'all'; label: string }> = [
       { id: 'all', label: 'Semua' },
-      { id: 'chat', label: 'Chat' },
-      { id: 'administrasi', label: 'Layanan Administrasi' },
-      { id: 'ppid', label: 'PPID' },
-      { id: 'pengaduan', label: 'Pengaduan' },
-      { id: 'aspirasi', label: 'Aspirasi' },
+      ...chatCategories.map(c => ({ id: c.id, label: c.label })),
     ];
 
     const list = (msgCategoryFilter === 'all')
-      ? messages
-      : messages.filter(m => m.category === msgCategoryFilter);
+      ? chatThreads
+      : chatThreads.filter(t => t.category?.id === msgCategoryFilter);
 
-    // Group messages by conversation (same subject)
-    const conversationMap = new Map<string, AppMessage[]>();
-    list.forEach(msg => {
-      const key = msg.subject;
-      if (!conversationMap.has(key)) {
-        conversationMap.set(key, []);
-      }
-      conversationMap.get(key)!.push(msg);
-    });
-
-    // Get latest message from each conversation for list view
-    const conversations = Array.from(conversationMap.values()).map(msgs => {
-      msgs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      return msgs[0]; // Latest message
-    }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    // If a message is selected, show conversation view
-    if (selectedMessage) {
-      const conversationMessages = conversationMap.get(selectedMessage.subject) || [];
-      conversationMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
+    if (selectedThread) {
       return (
         <div className="space-y-6">
           {/* Header with back button */}
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setSelectedMessage(null)}
+              onClick={() => {
+                setSelectedThread(null);
+                setChatMessages([]);
+              }}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ChevronRight className="w-6 h-6 text-gray-600 transform rotate-180" />
             </button>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900">{selectedMessage.subject}</h2>
-              <p className="text-sm text-gray-600">Kategori: {selectedMessage.category}</p>
+              <h2 className="text-2xl font-bold text-gray-900">{selectedThread.subject}</h2>
+              <p className="text-sm text-gray-600">Kategori: {selectedThread.category?.label}</p>
             </div>
           </div>
 
           {/* Conversation Thread */}
           <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-6">
             <div className="space-y-4 mb-6 max-h-96 overflow-y-auto">
-              {conversationMessages.map((msg, idx) => {
-                const isFromUser = msg.from_user_id === user?.id;
+              {chatMessages.map((msg, idx) => {
+                const isFromUser = msg.sender_user_id === user?.id;
                 return (
                   <div key={idx} className={`flex ${isFromUser ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[70%] ${isFromUser ? 'bg-gradient-to-r from-emerald-500 to-blue-500 text-white' : 'bg-gray-100 text-gray-900'} rounded-2xl p-4 shadow-md`}>
@@ -1566,9 +1879,9 @@ useEffect(() => {
                         {msg.content}
                       </p>
                       <p className={`text-xs mt-2 ${isFromUser ? 'text-white/70' : 'text-gray-500'}`}>
-                        {new Date(msg.created_at).toLocaleString('id-ID', { 
-                          day: 'numeric', 
-                          month: 'short', 
+                        {new Date(msg.created_at).toLocaleString('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit'
@@ -1591,11 +1904,21 @@ useEffect(() => {
                   rows={3}
                 />
                 <button
-                  onClick={() => {
-                    if (!user || !replyText.trim()) return;
-                    sendMessage(user.id, 1, selectedMessage.subject, replyText.trim(), selectedMessage.category);
-                    setReplyText('');
-                    setMessages(getMessagesForUser(user.id));
+                  onClick={async () => {
+                    if (!user || !selectedThread || !replyText.trim()) return;
+                    const token = localStorage.getItem('auth_token');
+                    if (!token) return;
+                    try {
+                      await sendChatMessage(token, selectedThread.id, replyText.trim());
+                      setReplyText('');
+                      const msgsRes = await fetchChatMessages(token, selectedThread.id);
+                      setChatMessages(msgsRes.data);
+                      const threadsRes = await fetchChatThreads(token);
+                      setChatThreads(threadsRes.data);
+                      await markChatRead(token, selectedThread.id);
+                    } catch (e) {
+                      console.error('Failed to send chat message', e);
+                    }
                   }}
                   className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white px-6 rounded-xl font-medium hover:shadow-lg transition-all hover:scale-105 flex items-center gap-2"
                 >
@@ -1619,8 +1942,8 @@ useEffect(() => {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Tulis Pesan Baru ke Operator</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <select
-              value={compose.category}
-              onChange={(e) => setCompose(prev => ({ ...prev, category: e.target.value as MessageCategory }))}
+              value={compose.chat_category_id}
+              onChange={(e) => setCompose(prev => ({ ...prev, chat_category_id: e.target.value ? Number(e.target.value) : '' }))}
               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
             >
               <option value="">Pilih kategori</option>
@@ -1636,12 +1959,29 @@ useEffect(() => {
               placeholder="Judul/Subjek"
             />
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!user) return;
-                if (!compose.category || !compose.subject.trim() || !compose.content.trim()) return;
-                sendMessage(user.id, 1, compose.subject.trim(), compose.content.trim(), compose.category);
-                setCompose({ category: '', subject: '', content: '' });
-                setMessages(getMessagesForUser(user.id));
+                const token = localStorage.getItem('auth_token');
+                if (!token) return;
+                if (!compose.chat_category_id || !compose.subject.trim() || !compose.content.trim()) return;
+                try {
+                  const created = await createChatThread(token, {
+                    chat_category_id: Number(compose.chat_category_id),
+                    subject: compose.subject.trim(),
+                    message: compose.content.trim(),
+                  });
+                  setCompose({ chat_category_id: '', subject: '', content: '' });
+                  const threadsRes = await fetchChatThreads(token);
+                  setChatThreads(threadsRes.data);
+                  if (created?.thread?.id) {
+                    const msgsRes = await fetchChatMessages(token, Number(created.thread.id));
+                    setSelectedThread(threadsRes.data.find(t => t.id === Number(created.thread.id)) || created.thread);
+                    setChatMessages(msgsRes.data);
+                    await markChatRead(token, Number(created.thread.id));
+                  }
+                } catch (e) {
+                  console.error('Failed to create chat thread', e);
+                }
               }}
               className="bg-gradient-to-r from-emerald-500 to-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transition-all"
             >
@@ -1662,7 +2002,7 @@ useEffect(() => {
           <h3 className="text-lg font-semibold text-gray-900">Daftar Pesan</h3>
           <select
             value={msgCategoryFilter}
-            onChange={(e) => setMsgCategoryFilter(e.target.value as any)}
+            onChange={(e) => setMsgCategoryFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
           >
             {categories.map(c => (
@@ -1678,37 +2018,51 @@ useEffect(() => {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto"></div>
                 <p className="text-gray-500 mt-2">Memuat pesan...</p>
               </div>
-            ) : conversations.length === 0 ? (
+            ) : list.length === 0 ? (
               <div className="text-center py-8">
                 <MessageSquare className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">Belum ada pesan</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {conversations.map((m) => (
+                {list.map((t) => (
                   <div 
-                    key={m.id} 
-                    onClick={() => setSelectedMessage(m)}
-                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${!m.is_read && m.to_user_id === user?.id ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'}`}
+                    key={t.id} 
+                    onClick={async () => {
+                      if (!user) return;
+                      const token = localStorage.getItem('auth_token');
+                      if (!token) return;
+                      try {
+                        setSelectedThread(t);
+                        const msgsRes = await fetchChatMessages(token, t.id);
+                        setChatMessages(msgsRes.data);
+                        await markChatRead(token, t.id);
+                        const threadsRes = await fetchChatThreads(token);
+                        setChatThreads(threadsRes.data);
+                      } catch (e) {
+                        console.error('Failed to open thread', e);
+                      }
+                    }}
+                    className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] ${t.unread_count > 0 ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'}`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          {!m.is_read && m.to_user_id === user?.id && (
+                          {t.unread_count > 0 && (
                             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                           )}
-                          <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium capitalize">{m.category}</span>
-                          <h4 className="font-bold text-gray-900">{m.subject}</h4>
+                          <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium capitalize">{t.category?.label}</span>
+                          <h4 className="font-bold text-gray-900">{t.subject}</h4>
                         </div>
-                        <p className="text-sm text-gray-600 line-clamp-2">{m.content}</p>
+                        <p className="text-sm text-gray-600 line-clamp-2">{t.last_message?.content || ''}</p>
                         <div className="flex items-center gap-2 mt-2">
                           <User className="w-3 h-3 text-gray-400" />
                           <span className="text-xs text-gray-500">
-                            {m.from_user_id === user?.id ? 'Anda' : 'Operator Desa'}
+                            Operator Desa
                           </span>
                           <span className="text-xs text-gray-400">\u2022</span>
                           <span className="text-xs text-gray-400">
-                            {new Date(m.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            {t.last_message?.created_at ? new Date(t.last_message.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
                           </span>
                         </div>
                       </div>
@@ -1879,7 +2233,7 @@ useEffect(() => {
     setActiveTab('settings');
   };
 
-  const handleNotificationClick = (notification: any) => {
+  const handleNotificationClick = (notification: DashboardNotification) => {
     if (notification.action?.tab) {
       setActiveTab(notification.action.tab);
     }
@@ -1930,6 +2284,7 @@ useEffect(() => {
       onSettingsClick={handleSettingsClick}
     >
       {renderContent()}
+      {renderLetterModal()}
     </DashboardLayout>
   );
 };

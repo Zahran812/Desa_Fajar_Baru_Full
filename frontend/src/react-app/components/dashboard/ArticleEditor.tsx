@@ -30,6 +30,13 @@ interface ArticleEditorProps {
 }
 
 const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
+  const previewStyles = `
+  .article-preview { text-align: justify; line-height: 1.8; }
+  .article-preview p { margin-bottom: 1rem; }
+  .article-preview img { max-width: 100%; display: block; margin: 1.25rem auto; border-radius: 0.5rem; }
+  .article-preview .article-inline-image { text-align: center; }
+  .article-preview h1, .article-preview h2, .article-preview h3, .article-preview h4 { margin-top: 1.5rem; margin-bottom: 0.75rem; }
+  `;
   const [formData, setFormData] = useState<Article>({
     title: '',
     slug: '',
@@ -45,7 +52,17 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
   const [showPreview, setShowPreview] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [inlineImageUrl, setInlineImageUrl] = useState('');
+  const [inlineImageFile, setInlineImageFile] = useState<File | null>(null);
+  const [inlineImagePreview, setInlineImagePreview] = useState<string | null>(null);
+  const [inlineImageAlt, setInlineImageAlt] = useState('Gambar');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inlineFileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const lastSelectionRef = useRef<Range | null>(null);
+  const isHydratingEditorRef = useRef(false);
+  const lastHydratedContentRef = useRef<string>('');
 
   useEffect(() => {
     if (article) {
@@ -60,6 +77,41 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
       }
     }
   }, [article]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // Hydrate editor content when loading a new article (or when formData.content changes externally)
+    // without clobbering user typing.
+    const nextHtml = formatContentForDisplay(formData.content);
+
+    // Only force-update if:
+    // - we're switching articles, or
+    // - editor is empty, or
+    // - content changed from outside the editor (save/load)
+    const shouldHydrate =
+      (article?.id ? true : false) &&
+      (lastHydratedContentRef.current !== formData.content || editor.innerHTML.trim() === '');
+
+    if (shouldHydrate && editor.innerHTML !== nextHtml) {
+      isHydratingEditorRef.current = true;
+      editor.innerHTML = nextHtml;
+      lastHydratedContentRef.current = formData.content;
+      // move caret to end
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+      lastSelectionRef.current = range;
+      // allow next onInput to run normally
+      setTimeout(() => {
+        isHydratingEditorRef.current = false;
+      }, 0);
+    }
+  }, [article?.id, formData.content]);
 
   // Auto-generate slug from title
   const handleTitleChange = (title: string) => {
@@ -109,10 +161,20 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
       return;
     }
 
+    // Fallback excerpt jika kosong: ambil hingga 500 karakter pertama konten (plain)
+    const serializedContent = formatContentForDisplay(formData.content);
+    const plainExcerpt = formData.excerpt.trim()
+      ? formData.excerpt.trim().slice(0, 500)
+      : serializedContent
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 500);
+
     setSaving(true);
     try {
       // Pass both form data and the selected image file
-      await onSave({ ...formData, status }, imageFile);
+      await onSave({ ...formData, status, content: serializedContent, excerpt: plainExcerpt }, imageFile);
     } catch (error) {
       console.error('Error saving article:', error);
       alert('Gagal menyimpan artikel');
@@ -130,23 +192,128 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
   ];
 
   const insertFormatting = (prefix: string, suffix: string = '') => {
-    const textarea = document.getElementById('article-content') as HTMLTextAreaElement;
-    if (!textarea) return;
+    const editor = editorRef.current;
+    if (!editor) return;
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = formData.content.substring(start, end) || 'teks';
-    const newText = formData.content.substring(0, start) + 
-                    prefix + selectedText + suffix + 
-                    formData.content.substring(end);
-    
-    setFormData(prev => ({ ...prev, content: newText }));
-    
-    // Set cursor position
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
-    }, 0);
+    editor.focus();
+
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    let range: Range | null = null;
+    if (selection.rangeCount > 0) range = selection.getRangeAt(0);
+    if (!range && lastSelectionRef.current) range = lastSelectionRef.current;
+    if (!range) return;
+
+    // Ensure range is inside editor
+    if (!editor.contains(range.commonAncestorContainer)) return;
+
+    const selectedText = selection.toString() || 'teks';
+    const textNode = document.createTextNode(`${prefix}${selectedText}${suffix}`);
+    range.deleteContents();
+    range.insertNode(textNode);
+
+    // Move caret after inserted content
+    range.setStartAfter(textNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    lastSelectionRef.current = range;
+
+    setFormData((prev) => ({ ...prev, content: editor.innerHTML }));
+  };
+
+  const handleInsertImageInline = () => {
+    setShowImageModal(true);
+  };
+
+  const handleInlineFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setInlineImageFile(file);
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setInlineImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    } else {
+      setInlineImagePreview(null);
+    }
+  };
+
+  const insertInlineImageAtCaret = (src: string, alt: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.focus();
+
+    const selection = window.getSelection();
+    let range: Range | null = null;
+    if (selection && selection.rangeCount > 0) range = selection.getRangeAt(0);
+    if (!range && lastSelectionRef.current) range = lastSelectionRef.current;
+    if (!range) return;
+
+    if (!editor.contains(range.commonAncestorContainer)) {
+      range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+    }
+
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = alt || 'Gambar';
+    img.style.maxWidth = '100%';
+    img.style.display = 'block';
+    img.style.margin = '1.25rem auto';
+    img.style.borderRadius = '0.5rem';
+
+    const wrapper = document.createElement('p');
+    wrapper.className = 'article-inline-image';
+    wrapper.appendChild(img);
+
+    // Insert wrapper paragraph and ensure cursor lands after it.
+    range.deleteContents();
+    range.insertNode(wrapper);
+
+    const after = document.createTextNode('');
+    wrapper.parentNode?.insertBefore(after, wrapper.nextSibling);
+
+    const newRange = document.createRange();
+    newRange.setStartAfter(wrapper);
+    newRange.collapse(true);
+    selection?.removeAllRanges();
+    selection?.addRange(newRange);
+    lastSelectionRef.current = newRange;
+
+    setFormData((prev) => ({ ...prev, content: editor.innerHTML }));
+  };
+
+  const handleInsertImageConfirm = () => {
+    const src = inlineImageFile && inlineImagePreview ? inlineImagePreview : inlineImageUrl.trim();
+    if (!src) {
+      alert('Masukkan URL gambar atau unggah file.');
+      return;
+    }
+    insertInlineImageAtCaret(src, inlineImageAlt);
+    setShowImageModal(false);
+    setInlineImageUrl('');
+    setInlineImageFile(null);
+    setInlineImagePreview(null);
+    setInlineImageAlt('Gambar');
+  };
+
+  const formatContentForDisplay = (content: string) => {
+    if (!content.trim()) return '';
+    // If content is already HTML (from the editor), keep it.
+    if (/<\s*(p|div|img|h1|h2|h3|h4|ul|ol|li|br)\b/i.test(content)) {
+      return content;
+    }
+    const paragraphs = content.trim().split(/\n{2,}/);
+    return paragraphs
+      .map((p) => {
+        const withBr = p.replace(/\n/g, '<br />');
+        const hasImg = /<img\s/i.test(withBr);
+        return hasImg ? `<p class="article-inline-image">${withBr}</p>` : `<p>${withBr}</p>`;
+      })
+      .join('');
   };
 
   return (
@@ -308,21 +475,129 @@ const ArticleEditor = ({ article, onSave, onCancel }: ArticleEditorProps) => {
                   >
                     <LinkIcon className="w-4 h-4" />
                   </button>
+                  <button
+                    onClick={handleInsertImageInline}
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-all"
+                    title="Sisip Gambar (URL)"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              
-              <textarea
-                id="article-content"
-                value={formData.content}
-                onChange={(e) => setFormData(prev => ({ ...prev, content: e.target.value }))}
-                placeholder="Tulis konten artikel di sini... 
+              {showImageModal && (
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+                  <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900">Sisipkan Gambar</h3>
+                      <button
+                        onClick={() => {
+                          setShowImageModal(false);
+                          setInlineImageUrl('');
+                          setInlineImageFile(null);
+                          setInlineImagePreview(null);
+                          setInlineImageAlt('Gambar');
+                        }}
+                        className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
 
-Gunakan markdown untuk formatting:
-- **tebal** untuk bold
-- *miring* untuk italic
-- ## untuk heading
-- - untuk bullet list"
-                className="w-full min-h-[500px] p-6 text-gray-900 placeholder-gray-400 border-none focus:ring-0 focus:outline-none resize-none font-mono text-sm"
+                    <div className="space-y-3">
+                      <label className="block text-sm font-medium text-gray-700">Alt Text</label>
+                      <input
+                        value={inlineImageAlt}
+                        onChange={(e) => setInlineImageAlt(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                        placeholder="Deskripsi gambar"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">URL Gambar</label>
+                      <input
+                        value={inlineImageUrl}
+                        onChange={(e) => setInlineImageUrl(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                        placeholder="https://..."
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Atau Unggah Gambar</label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => inlineFileInputRef.current?.click()}
+                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg"
+                        >
+                          <Upload className="w-4 h-4" />
+                          Pilih File
+                        </button>
+                        <input
+                          ref={inlineFileInputRef}
+                          type="file"
+                          accept="image/png, image/jpeg, image/webp"
+                          className="hidden"
+                          onChange={handleInlineFileChange}
+                        />
+                        {inlineImageFile && (
+                          <span className="text-sm text-gray-600 truncate max-w-[200px]">{inlineImageFile.name}</span>
+                        )}
+                      </div>
+                      {inlineImagePreview && (
+                        <div className="mt-2">
+                          <img src={inlineImagePreview} alt="Preview" className="max-h-40 rounded-lg border border-gray-200" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-2">
+                      <button
+                        onClick={() => {
+                          setShowImageModal(false);
+                          setInlineImageUrl('');
+                          setInlineImageFile(null);
+                          setInlineImagePreview(null);
+                          setInlineImageAlt('Gambar');
+                        }}
+                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        onClick={handleInsertImageConfirm}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                      >
+                        Sisipkan
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div
+                ref={editorRef}
+                id="article-content"
+                contentEditable
+                suppressContentEditableWarning
+                onMouseUp={() => {
+                  const sel = window.getSelection();
+                  if (sel && sel.rangeCount > 0) lastSelectionRef.current = sel.getRangeAt(0);
+                }}
+                onKeyUp={() => {
+                  const sel = window.getSelection();
+                  if (sel && sel.rangeCount > 0) lastSelectionRef.current = sel.getRangeAt(0);
+                }}
+                onFocus={() => {
+                  const sel = window.getSelection();
+                  if (sel && sel.rangeCount > 0) lastSelectionRef.current = sel.getRangeAt(0);
+                }}
+                onInput={(e) => {
+                  if (isHydratingEditorRef.current) return;
+                  const html = (e.currentTarget as HTMLDivElement).innerHTML;
+                  setFormData((prev) => ({ ...prev, content: html }));
+                }}
+                className="w-full min-h-[500px] p-6 text-gray-900 placeholder-gray-400 border-none focus:ring-0 focus:outline-none resize-none text-sm"
               />
             </div>
 
@@ -444,6 +719,7 @@ Gunakan markdown untuk formatting:
             </div>
             
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              <style>{previewStyles}</style>
               {imagePreview && (
                 <img 
                   src={imagePreview} 
@@ -474,11 +750,7 @@ Gunakan markdown untuk formatting:
                 </p>
               )}
               
-              <div className="prose prose-emerald max-w-none">
-                <div className="whitespace-pre-wrap text-gray-800">
-                  {formData.content || 'Konten kosong'}
-                </div>
-              </div>
+              <div className="article-preview prose prose-emerald max-w-none" dangerouslySetInnerHTML={{ __html: formatContentForDisplay(formData.content) || 'Konten kosong' }} />
             </div>
           </div>
         </div>

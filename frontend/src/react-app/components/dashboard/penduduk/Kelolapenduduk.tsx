@@ -1,4 +1,5 @@
 import React from 'react';
+
 import {
   LayoutGrid,
   List,
@@ -97,6 +98,7 @@ const Kelolapenduduk: React.FC<KelolaPendudukProps> = ({
   sortCitizensForDisplay,
   setSelectedCitizens,
 }) => {
+
   const [tableSortKey, setTableSortKey] = React.useState<'rt' | 'jenis_kelamin'>('rt');
   const [tableSortDir, setTableSortDir] = React.useState<'asc' | 'desc'>('asc');
 

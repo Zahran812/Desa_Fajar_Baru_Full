@@ -11,11 +11,14 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\LetterTemplateController;
+use App\Http\Controllers\DusunController;
+use App\Http\Controllers\ResidentController;
+use App\Http\Controllers\DusunHeadController;
 use App\Http\Controllers\Api\ArticleController;
 use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\LetterController;
 use App\Http\Controllers\Api\Dashboard\ArticleController as DashboardArticleController;
-
+use App\Http\Controllers\ChatController;
 
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [RegisterController::class, 'register']);
@@ -40,6 +43,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/users/list', [UserListController::class, 'index']);
     Route::post('/approve-user', [UserApprovalController::class, 'approveUser']);
+
+    // Chat
+    Route::get('/chat/categories', [ChatController::class, 'categories']);
+    Route::get('/chat/threads', [ChatController::class, 'threads']);
+    Route::post('/chat/threads', [ChatController::class, 'createThread']);
+    Route::get('/chat/threads/{thread}/messages', [ChatController::class, 'messages']);
+    Route::post('/chat/threads/{thread}/messages', [ChatController::class, 'sendMessage']);
+    Route::post('/chat/threads/{thread}/mark-read', [ChatController::class, 'markRead']);
+
     // Agenda CRUD (Resource-like routes)
     Route::post('/agenda', [AgendaController::class, 'store']); // Untuk membuat agenda baru
     Route::put('/agenda/{agenda}', [AgendaController::class, 'update']); // Untuk update agenda
@@ -88,4 +100,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('requests/{request}/generate', [LetterController::class, 'generate'])->name('requests.generate');
     Route::get('requests/{request}/preview', [LetterController::class, 'preview'])->name('requests.preview');
     Route::post('requests/{request}/sign', [LetterController::class, 'sign'])->name('requests.sign');
+
+    // Dusun & Resident management
+    Route::apiResource('dusuns', DusunController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('dusun-heads', [DusunHeadController::class, 'store']);
+    Route::get('residents', [ResidentController::class, 'index']);
+    Route::post('residents', [ResidentController::class, 'store']);
+    Route::put('residents/{resident}', [ResidentController::class, 'update']);
+    Route::delete('residents/{resident}', [ResidentController::class, 'destroy']);
+    Route::post('residents/import', [ResidentController::class, 'import']);
 });

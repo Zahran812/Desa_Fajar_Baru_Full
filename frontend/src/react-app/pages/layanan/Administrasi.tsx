@@ -1,7 +1,7 @@
 import PageLayout from '@/react-app/components/PageLayout';
 import {
   FileText, Clock, CheckCircle, ChevronDown,
-  Phone, Mail, Download
+  Phone, Download
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { apiGet } from '@/react-app/lib/api';
@@ -345,10 +345,19 @@ const AdministrasiPage = () => {
 
           <section className="mb-16">
             <div className="bg-gradient-to-r from-village-green to-blue-600 rounded-2xl p-8 text-white">
-              <h2 className="text-2xl font-bold text-center mb-8">Butuh Bantuan?</h2>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="text-center"><Phone className="w-8 h-8 mx-auto mb-3" /><h3 className="font-semibold mb-2">Telepon</h3><p className="text-emerald-100">(0721) 123-456</p></div>
-                <div className="text-center"><Mail className="w-8 h-8 mx-auto mb-3" /><h3 className="font-semibold mb-2">Email</h3><p className="text-emerald-100">admin@desafajarbaru.id</p></div>
+              <h2 className="text-2xl font-bold text-center mb-3">Cek dan Kelola Pajak Bumi dan Bangunan (PBB)</h2>
+              <p className="text-center text-emerald-100 max-w-2xl mx-auto mb-8">
+                Cek status pembayaran PBB Anda dengan cepat dan mudah. Pastikan data pajak Anda selalu terbarui untuk menghindari denda keterlambatan.
+              </p>
+              <div className="flex justify-center">
+                <a
+                  href="https://website.fajarbaru.workers.dev/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center px-6 py-3 rounded-full bg-white text-emerald-700 font-semibold shadow-sm hover:bg-gray-100 transition-colors w-full sm:w-auto"
+                >
+                  Cek Pembayaran PBB
+                </a>
               </div>
             </div>
           </section>
